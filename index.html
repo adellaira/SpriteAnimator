@@ -87,11 +87,11 @@
   .drop b{color:var(--amber);}
   .count{font-family:var(--mono);font-size:11px;color:var(--muted-2);}
 
-  .twobox{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:10px;padding:10px;}
-  .twobox:hover{border-color:var(--amber-dim);}
-  .twobox span{font-size:11.5px;color:var(--muted);}
-  .thumb.tw{width:100%;height:54px;border-radius:6px;background:#0c0a08 center/contain no-repeat;border:1px dashed var(--line);}
-  .thumb.tw.set{border-style:solid;border-color:var(--amber-dim);}
+  .zk-list{display:flex;flex-direction:column;gap:7px;}
+  .zk-row{display:flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:8px;padding:6px 8px;}
+  .zk-row .zkT,.zk-row .zkZ{width:60px;padding:5px 7px !important;font-size:12px !important;}
+  .zk-row span{font-size:11px;color:var(--muted-2);}
+  .zk-row .grow{flex:1;}
 
   .progress{height:6px;background:#0e0c0a;border-radius:99px;overflow:hidden;margin-top:12px;display:none;}
   .progress.show{display:block;}
@@ -146,40 +146,8 @@
         <div class="drop" id="drop">
           <input type="file" id="fileInput" accept="image/*" multiple hidden />
           Trascina qui o <b>scegli i file</b><br>
-          <span class="count">8 sezioni orizzontali &middot; ogni sheet ha la sua velocità</span>
+          <span class="count">8 frame per sheet &middot; layout 8×1 o 4×2 &middot; velocità propria</span>
         </div>
-      </section>
-
-      <section class="panel ctrl">
-        <p class="eyebrow">Genera transizione</p>
-        <p style="font-size:12px;color:var(--muted);margin:-4px 0 14px;line-height:1.5">Da un'immagine iniziale a una finale, crea uno spritesheet con i fotogrammi intermedi. Viene aggiunto agli sheet qui sopra.</p>
-        <div class="field row2">
-          <label class="twobox" for="twoA"><div class="thumb tw" id="thumbA"></div><span>Iniziale</span><input type="file" id="twoA" accept="image/*" hidden></label>
-          <label class="twobox" for="twoB"><div class="thumb tw" id="thumbB"></div><span>Finale</span><input type="file" id="twoB" accept="image/*" hidden></label>
-        </div>
-        <div class="field row2">
-          <div>
-            <label class="lbl" for="tweenFrames">Fotogrammi</label>
-            <input type="number" id="tweenFrames" min="2" max="16" value="8">
-          </div>
-          <div>
-            <label class="lbl" for="tweenType">Effetto</label>
-            <select id="tweenType">
-              <option value="dissolvenza">Dissolvenza</option>
-              <option value="scorrimento">Scorrimento</option>
-              <option value="zoom">Zoom</option>
-            </select>
-          </div>
-        </div>
-        <div class="field">
-          <label class="lbl" for="tweenEase">Andamento</label>
-          <select id="tweenEase">
-            <option value="morbida">Morbido</option>
-            <option value="lineare">Lineare</option>
-          </select>
-        </div>
-        <button class="btn primary" id="tweenBtn" style="width:100%;justify-content:center">Genera e aggiungi</button>
-        <div class="exp-status" id="tweenStatus"></div>
       </section>
 
       <section class="panel ctrl">
@@ -217,6 +185,20 @@
               <input type="checkbox" id="bgTransparent" style="accent-color:var(--amber)"> trasparente
             </label>
           </div>
+        </div>
+      </section>
+
+      <section class="panel ctrl">
+        <p class="eyebrow">Zoom nel tempo</p>
+        <p style="font-size:12px;color:var(--muted);margin:-4px 0 12px;line-height:1.5">Imposta il livello di zoom in punti temporali; tra un punto e il successivo la transizione è graduale. <b style="color:var(--muted)">100%</b> = nessuno zoom, <b style="color:var(--muted)">130%</b> = zoom in 30%, <b style="color:var(--muted)">70%</b> = zoom out.</p>
+        <canvas id="zoomCurve" height="72" style="width:100%;display:block;background:#0c0a08;border:1px solid var(--line-soft);border-radius:8px"></canvas>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted-2);margin:8px 0 10px">durata totale <b id="zkTotal" style="color:var(--muted)">0.0s</b> · <span id="zkNow">0.0s</span></div>
+        <div class="zk-list" id="zkList"></div>
+        <div class="inline" style="justify-content:space-between;margin-top:10px">
+          <button class="btn ghost" id="zkAdd" style="font-size:12px;padding:7px 12px">+ Aggiungi punto</button>
+          <label class="inline" style="gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="zkSmooth" checked style="accent-color:var(--amber)"> morbido
+          </label>
         </div>
       </section>
 
@@ -261,17 +243,18 @@
 (() => {
   "use strict";
 
-  const sheets = [];   // {id, name, img, columns, fps, url}
+  const sheets = [];   // {id, name, img, cols, rows, fps, url}
   let frames = [];     // {img, sx, sy, sw, sh, fps, dur}
   let curFrame = 0, playing = false, lastTs = 0, acc = 0, rafId = null, uid = 0;
+  let clockSec = 0;              // elapsed time along the whole timeline
+  const zk = [{ t:0, z:100 }];   // zoom keyframes {time (s), zoom (%)}
 
   const $ = (id) => document.getElementById(id);
   const canvas = $("canvas"), ctx = canvas.getContext("2d");
   const stage = $("stage"), emptyState = $("emptyState");
   const sheetList = $("sheetList"), fileInput = $("fileInput"), drop = $("drop");
-  const twoA=$("twoA"), twoB=$("twoB"), thumbA=$("thumbA"), thumbB=$("thumbB"),
-        tweenFrames=$("tweenFrames"), tweenType=$("tweenType"), tweenEase=$("tweenEase"),
-        tweenBtn=$("tweenBtn"), tweenStatus=$("tweenStatus");
+  const zoomCurve=$("zoomCurve"), zkTotal=$("zkTotal"), zkNow=$("zkNow"),
+        zkList=$("zkList"), zkAdd=$("zkAdd"), zkSmooth=$("zkSmooth");
   const fpsEl = $("fps"), fpsVal = $("fpsVal"), applyAll = $("applyAll");
   const sizeEl = $("size"), fitEl = $("fit"), bgColor = $("bgColor"), bgTransparent = $("bgTransparent");
   const loopsEl = $("loops"), loopsVal = $("loopsVal"), formatEl = $("format");
@@ -293,10 +276,13 @@
   function rebuildFrames(){
     frames = [];
     for (const s of sheets){
-      const cols = Math.max(1, s.columns || 8);
+      const cols = Math.max(1, s.cols || 8);
+      const rows = Math.max(1, s.rows || 1);
       const fps = Math.max(1, s.fps || 12);
-      const fw = s.img.naturalWidth / cols, fh = s.img.naturalHeight;
-      for (let i=0;i<cols;i++) frames.push({ img:s.img, sx:i*fw, sy:0, sw:fw, sh:fh, fps, dur:1000/fps });
+      const fw = s.img.naturalWidth / cols, fh = s.img.naturalHeight / rows;
+      for (let r=0;r<rows;r++)
+        for (let cIdx=0;cIdx<cols;cIdx++)
+          frames.push({ img:s.img, sx:cIdx*fw, sy:r*fh, sw:fw, sh:fh, fps, dur:1000/fps });
     }
     if (curFrame >= frames.length) curFrame = 0;
     const has = frames.length > 0;
@@ -305,6 +291,7 @@
     playBtn.disabled = restartBtn.disabled = exportBtn.disabled = !has;
     has ? drawFrame(curFrame) : clearStage();
     updateReadout();
+    updateZoomMeta();
   }
 
   function clearStage(){ setCanvasSize(); ctx.clearRect(0,0,canvas.width,canvas.height); }
@@ -314,13 +301,32 @@
     else { ctx.fillStyle = bgColor.value; ctx.fillRect(0,0,canvas.width,canvas.height); }
   }
 
+  function totalDur(){ return onePassSeconds() * parseInt(loopsEl.value,10); }
+
+  function zoomPercentAt(t){
+    if (!zk.length) return 100;
+    const a = [...zk].sort((x,y)=>x.t-y.t);
+    if (t <= a[0].t) return a[0].z;
+    if (t >= a[a.length-1].t) return a[a.length-1].z;
+    for (let i=0;i<a.length-1;i++){
+      if (t >= a[i].t && t <= a[i+1].t){
+        const span = a[i+1].t - a[i].t;
+        let u = span > 0 ? (t - a[i].t)/span : 0;
+        if (zkSmooth.checked) u = u*u*(3-2*u);
+        return a[i].z + (a[i+1].z - a[i].z)*u;
+      }
+    }
+    return a[a.length-1].z;
+  }
+
   function drawFrame(i){
     setCanvasSize();
     const f = frames[i];
     if (!f){ clearStage(); return; }
     paintBg();
     const cw = canvas.width, ch = canvas.height, mode = fitEl.value;
-    const scale = mode === "cover" ? Math.max(cw/f.sw, ch/f.sh) : Math.min(cw/f.sw, ch/f.sh);
+    const fit = mode === "cover" ? Math.max(cw/f.sw, ch/f.sh) : Math.min(cw/f.sw, ch/f.sh);
+    const scale = fit * (zoomPercentAt(clockSec) / 100);
     const dw = f.sw*scale, dh = f.sh*scale, dx = (cw-dw)/2, dy = (ch-dh)/2;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
@@ -334,19 +340,23 @@
     rFrame.textContent = `${total ? curFrame+1 : 0}/${total}`;
     rFps.textContent = total ? frames[curFrame].fps : getDefFps();
     rDur.textContent = onePassSeconds().toFixed(1);
+    zkNow.textContent = clockSec.toFixed(1) + "s";
   }
 
-  // ---- playback (per-frame duration) ----
+  // ---- playback (per-frame duration + timeline clock) ----
   function loop(ts){
     if (!playing) return;
     if (!lastTs) lastTs = ts;
-    acc += ts - lastTs; lastTs = ts;
+    const dt = ts - lastTs; acc += dt; lastTs = ts;
+    const tot = totalDur();
+    clockSec += dt/1000;
+    if (tot > 0 && clockSec >= tot) clockSec %= tot;
     let guard = 0;
     while (frames.length && acc >= frames[curFrame].dur && guard++ < 240){
       acc -= frames[curFrame].dur;
       curFrame = (curFrame+1) % frames.length;
-      drawFrame(curFrame); updateReadout();
     }
+    drawFrame(curFrame); updateReadout(); drawCurve();
     rafId = requestAnimationFrame(loop);
   }
   function play(){ if(!frames.length) return; playing=true; lastTs=0; acc=0; playLabel.textContent="Pausa"; playBtn.querySelector("path").setAttribute("d","M4 3h3v10H4zM9 3h3v10H9z"); rafId=requestAnimationFrame(loop); }
@@ -365,8 +375,10 @@
           <div class="name">${escapeHtml(s.name)}</div>
           <div class="sub">${s.img.naturalWidth}×${s.img.naturalHeight}px</div>
           <div class="params">
-            <input type="number" min="1" max="64" value="${s.columns}" data-id="${s.id}" data-k="columns" class="metaInput" />
-            <span>sezioni</span>
+            <select data-id="${s.id}" data-k="layout" class="metaInput" style="width:auto">
+              ${["8x1","4x2","2x4","1x8"].map(o => `<option value="${o}" ${s.cols+'x'+s.rows===o?"selected":""}>${o.replace('x','×')}</option>`).join("")}
+            </select>
+            <span>layout</span>
             <input type="number" min="1" max="60" value="${s.fps}" data-id="${s.id}" data-k="fps" class="metaInput" />
             <span>fps</span>
           </div>
@@ -382,14 +394,20 @@
     drop.style.display = sheets.length >= 5 ? "none" : "";
   }
 
-  sheetList.addEventListener("input", (e) => {
+  function onSheetParam(e){
     const t = e.target;
     if (!t.classList.contains("metaInput")) return;
     const s = sheets.find(x => x.id == t.dataset.id); if (!s) return;
-    const v = Math.max(1, parseInt(t.value,10) || 1);
-    if (t.dataset.k === "columns") s.columns = v; else s.fps = v;
+    if (t.dataset.k === "layout"){
+      const [c, r] = t.value.split("x").map(Number);
+      s.cols = c; s.rows = r;
+    } else {
+      s.fps = Math.max(1, parseInt(t.value,10) || 1);
+    }
     rebuildFrames();
-  });
+  }
+  sheetList.addEventListener("input", onSheetParam);
+  sheetList.addEventListener("change", onSheetParam);
   sheetList.addEventListener("click", (e) => {
     const btn = e.target.closest(".minibtn"); if (!btn) return;
     const i = sheets.findIndex(x => x.id == btn.dataset.id); if (i<0) return;
@@ -405,7 +423,7 @@
     files.slice(0, room).forEach(file => {
       const url = URL.createObjectURL(file);
       const img = new Image();
-      img.onload = () => { sheets.push({ id:++uid, name:file.name, img, columns:8, fps:getDefFps(), url }); renderSheetList(); rebuildFrames(); };
+      img.onload = () => { sheets.push({ id:++uid, name:file.name, img, cols:8, rows:1, fps:getDefFps(), url }); renderSheetList(); rebuildFrames(); };
       img.onerror = () => URL.revokeObjectURL(url);
       img.src = url;
     });
@@ -419,89 +437,84 @@
   ["dragover","drop"].forEach(ev => stage.addEventListener(ev, e => e.preventDefault()));
   stage.addEventListener("drop", e => addFiles(e.dataTransfer.files));
 
-  // ---- transition generator (A -> B in N frames) ----
-  let tweenImgA = null, tweenImgB = null;
-  function loadTween(file, slot){
-    if (!file || !file.type.startsWith("image/")) return;
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      if (slot === "A"){ tweenImgA = img; thumbA.style.backgroundImage = `url('${url}')`; thumbA.classList.add("set"); }
-      else { tweenImgB = img; thumbB.style.backgroundImage = `url('${url}')`; thumbB.classList.add("set"); }
-      tweenStatus.textContent = "";
-    };
-    img.onerror = () => URL.revokeObjectURL(url);
-    img.src = url;
-  }
-  twoA.addEventListener("change", e => loadTween(e.target.files[0], "A"));
-  twoB.addEventListener("change", e => loadTween(e.target.files[0], "B"));
-
-  const easeFns = { lineare: t => t, morbida: t => t*t*(3-2*t) };
-
-  function generateTween(){
-    if (!tweenImgA || !tweenImgB){ tweenStatus.textContent = "Carica immagine iniziale e finale."; return; }
-    if (sheets.length >= 5){ tweenStatus.textContent = "Hai già 5 sheet — rimuovine uno."; return; }
-    const n = Math.min(16, Math.max(2, parseInt(tweenFrames.value,10) || 8));
-    const ease = easeFns[tweenEase.value] || easeFns.morbida;
-    const type = tweenType.value;
-    const fW = Math.max(tweenImgA.naturalWidth,  tweenImgB.naturalWidth);
-    const fH = Math.max(tweenImgA.naturalHeight, tweenImgB.naturalHeight);
-
-    const strip = document.createElement("canvas");
-    strip.width = fW * n; strip.height = fH;
-    const c = strip.getContext("2d");
-    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = "high";
-
-    const place = (img, ox, alpha, offsetX=0, scaleMul=1) => {
-      const s = Math.min(fW/img.naturalWidth, fH/img.naturalHeight) * scaleMul;
-      const w = img.naturalWidth*s, h = img.naturalHeight*s;
-      const x = ox + (fW - w)/2 + offsetX, y = (fH - h)/2;
-      c.globalAlpha = Math.max(0, Math.min(1, alpha));
-      c.drawImage(img, x, y, w, h);
-      c.globalAlpha = 1;
-    };
-
-    for (let i=0;i<n;i++){
-      const t = ease(i/(n-1));
-      const ox = i*fW;
-      c.save();
-      c.beginPath(); c.rect(ox, 0, fW, fH); c.clip();
-      if (type === "scorrimento"){
-        place(tweenImgA, ox, 1, -t*fW);
-        place(tweenImgB, ox, 1, (1-t)*fW);
-      } else if (type === "zoom"){
-        place(tweenImgA, ox, 1-t, 0, 1);
-        place(tweenImgB, ox, t, 0, 0.6 + 0.4*t);
-      } else {
-        place(tweenImgA, ox, 1-t);
-        place(tweenImgB, ox, t);
-      }
-      c.restore();
-    }
-
-    const dataUrl = strip.toDataURL("image/png");
-    const img = new Image();
-    img.onload = () => {
-      sheets.push({ id:++uid, name:`transizione (${n}f)`, img, columns:n, fps:getDefFps(), url:dataUrl });
-      renderSheetList(); rebuildFrames();
-      tweenStatus.textContent = `Transizione di ${n} frame aggiunta agli sheet ✓`;
-    };
-    img.src = dataUrl;
-  }
-  tweenBtn.addEventListener("click", generateTween);
-
   fpsEl.addEventListener("input", () => { fpsVal.textContent = fpsEl.value; });
   applyAll.addEventListener("click", () => { const v=getDefFps(); sheets.forEach(s=>s.fps=v); renderSheetList(); rebuildFrames(); });
-  loopsEl.addEventListener("input", () => { loopsVal.textContent = loopsEl.value; });
+  loopsEl.addEventListener("input", () => { loopsVal.textContent = loopsEl.value; updateZoomMeta(); });
   sizeEl.addEventListener("change", () => { setCanvasSize(); drawFrame(curFrame); });
   fitEl.addEventListener("change", () => drawFrame(curFrame));
   bgColor.addEventListener("input", () => drawFrame(curFrame));
   bgTransparent.addEventListener("change", () => drawFrame(curFrame));
   playBtn.addEventListener("click", toggle);
-  restartBtn.addEventListener("click", () => { curFrame=0; acc=0; lastTs=0; drawFrame(0); updateReadout(); });
+  restartBtn.addEventListener("click", () => { curFrame=0; acc=0; lastTs=0; clockSec=0; drawFrame(0); updateReadout(); drawCurve(); });
   document.addEventListener("keydown", (e) => {
     if (e.code === "Space" && !["INPUT","SELECT","TEXTAREA"].includes(e.target.tagName)){ e.preventDefault(); if(!playBtn.disabled) toggle(); }
   });
+
+  // ---- zoom keyframe editor ----
+  function updateZoomMeta(){
+    const tot = totalDur();
+    zkTotal.textContent = tot.toFixed(1) + "s";
+    drawCurve();
+  }
+  function renderZkList(){
+    zk.sort((a,b)=>a.t-b.t);
+    zkList.innerHTML = zk.map((k,i) => `
+      <div class="zk-row">
+        <input type="number" class="zkT" data-i="${i}" min="0" step="0.1" value="${+k.t.toFixed(2)}"><span>s</span>
+        <input type="number" class="zkZ" data-i="${i}" min="30" max="400" step="5" value="${Math.round(k.z)}"><span>%</span>
+        <span class="grow"></span>
+        <button class="minibtn del zkDel" data-i="${i}" title="Rimuovi" ${zk.length<=1?"disabled style=opacity:.3":""}>✕</button>
+      </div>`).join("");
+    updateZoomMeta();
+  }
+  zkList.addEventListener("input", (e) => {
+    const t = e.target, i = +t.dataset.i; if (!zk[i]) return;
+    if (t.classList.contains("zkT")) zk[i].t = Math.max(0, parseFloat(t.value) || 0);
+    else if (t.classList.contains("zkZ")) zk[i].z = Math.max(30, Math.min(400, parseFloat(t.value) || 100));
+    drawFrame(curFrame); updateZoomMeta();   // live, without rebuilding inputs (keeps focus)
+  });
+  zkList.addEventListener("change", () => renderZkList()); // re-sort/re-index once editing ends
+  zkList.addEventListener("click", (e) => {
+    const btn = e.target.closest(".zkDel"); if (!btn) return;
+    const i = +btn.dataset.i;
+    if (zk.length > 1){ zk.splice(i,1); renderZkList(); drawFrame(curFrame); }
+  });
+  zkAdd.addEventListener("click", () => {
+    const tot = totalDur() || (zk.length ? zk[zk.length-1].t + 1 : 1);
+    const lastT = zk.length ? Math.max(...zk.map(k=>k.t)) : 0;
+    zk.push({ t: Math.min(tot, +(lastT + 1).toFixed(2)), z: 100 });
+    renderZkList();
+  });
+  zkSmooth.addEventListener("change", () => { drawFrame(curFrame); drawCurve(); });
+
+  function drawCurve(){
+    const c = zoomCurve.getContext("2d");
+    const W = zoomCurve.width = zoomCurve.clientWidth || 300;
+    const H = zoomCurve.height;
+    c.clearRect(0,0,W,H);
+    const tot = totalDur();
+    const zs = zk.map(k=>k.z).concat([100]);
+    const zmin = Math.min(...zs) - 12, zmax = Math.max(...zs) + 12;
+    const yOf = (z) => H - ((z - zmin)/(zmax - zmin))*(H-10) - 5;
+    const xOf = (t) => tot>0 ? (t/tot)*W : 0;
+    // 100% baseline
+    c.strokeStyle = "#3a322b"; c.setLineDash([3,4]); c.lineWidth = 1;
+    c.beginPath(); c.moveTo(0, yOf(100)); c.lineTo(W, yOf(100)); c.stroke(); c.setLineDash([]);
+    if (tot > 0){
+      // curve
+      c.strokeStyle = "#f0a83c"; c.lineWidth = 2; c.beginPath();
+      for (let x=0;x<=W;x+=2){ const t=(x/W)*tot, y=yOf(zoomPercentAt(t)); x===0?c.moveTo(x,y):c.lineTo(x,y); }
+      c.stroke();
+      // keyframe dots
+      c.fillStyle = "#efe7dd";
+      for (const k of zk){ c.beginPath(); c.arc(xOf(k.t), yOf(k.z), 3.2, 0, Math.PI*2); c.fill(); }
+      // playhead
+      const px = xOf(Math.min(clockSec, tot));
+      c.strokeStyle = "#e5564b"; c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(px, 0); c.lineTo(px, H); c.stroke();
+    }
+  }
+  window.addEventListener("resize", drawCurve);
 
   // ---- export ----
   const pickFrom = (list) => list.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
@@ -520,11 +533,14 @@
     rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     const done = new Promise(res => { rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || mime || "video/webm" })); });
     rec.start();
+    let elapsed = 0;
     for (let n=0; n<totalFrames; n++){
       const f = frames[n % frames.length];
+      clockSec = elapsed;
       drawFrame(n % frames.length);
       if (canReq) track.requestFrame();
       progressBar.style.width = ((n+1)/totalFrames*100).toFixed(1) + "%";
+      elapsed += f.dur/1000;
       await sleep(f.dur);
     }
     await sleep(frames[(totalFrames-1) % frames.length].dur);
@@ -600,12 +616,13 @@
       expStatus.innerHTML = `Pronto · ${ext.toUpperCase()} · ${(onePassSeconds()*loops).toFixed(1)}s · ${sizeStr}`;
     dlBox.classList.add("show");
     resetExport();
-    curFrame = 0; drawFrame(0); updateReadout();
+    curFrame = 0; clockSec = 0; drawFrame(0); updateReadout(); drawCurve();
   }
   function resetExport(){ exportBtn.disabled = false; playBtn.disabled = false; }
   exportBtn.addEventListener("click", exportVideo);
 
   setCanvasSize();
+  renderZkList();
   rebuildFrames();
 })();
 </script>
