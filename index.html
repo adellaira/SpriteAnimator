@@ -306,6 +306,7 @@
   let frameStarts = []; // start time (s) of each frame within one pass
   let curFrame = 0, playing = false, lastTs = 0, acc = 0, rafId = null, uid = 0;
   let clockSec = 0;              // elapsed time along the whole timeline
+  let refW = 1, refH = 1;        // global contain reference across all frames
   const zk = [{ t:0, z:100 }];   // zoom keyframes {time (s), zoom (%)}
 
   const $ = (id) => document.getElementById(id);
@@ -368,15 +369,24 @@
       }
     }
     frames.forEach(f => f.thumb = thumbFor(f));
+    curFrame = 0; clockSec = 0;
     recompute();
     renderGrid();
   }
 
-  // recompute derived data (durations, timeline) and refresh preview — keeps edits
+  // recompute derived data (durations, timeline, scale reference) — keeps edits
   function recompute(){
     frames.forEach(f => f.dur = 1000/f.fps);
     frameStarts = []; let acc2 = 0;
     for (const f of frames){ frameStarts.push(acc2); acc2 += f.dur/1000; }
+    // single "contain" reference recomputed over ALL current frames
+    refW = 1; refH = 1;
+    for (const f of frames){
+      const w = f.proc ? f.proc.canvas.width  : f.sw;
+      const h = f.proc ? f.proc.canvas.height : f.sh;
+      if (w > refW) refW = w;
+      if (h > refH) refH = h;
+    }
     if (curFrame >= frames.length) curFrame = 0;
     const has = frames.length > 0;
     emptyState.style.display = has ? "none" : "";
@@ -478,18 +488,18 @@
     const f = frames[i]; if (!f) return;
     const cw = canvas.width, ch = canvas.height, mode = fitEl.value;
     const zoom = zoomPercentAt(clockSec) / 100;
+    // one shared "contain/cover" scale for every frame, based on the global reference
+    const fit = mode === "cover" ? Math.max(cw/refW, ch/refH) : Math.min(cw/refW, ch/refH);
+    const scale = fit * zoom;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.globalAlpha = alpha;
     if (f.proc){
-      const p = f.proc;
-      const fit = mode === "cover" ? Math.max(cw/p.cellW, ch/p.cellH) : Math.min(cw/p.cellW, ch/p.cellH);
-      const scale = fit * zoom;
-      const dw = p.canvas.width*scale, dh = p.canvas.height*scale;
-      if (p.canvas.width>1) ctx.drawImage(p.canvas, (cw-dw)/2, (ch-dh)/2, dw, dh);
+      if (f.proc.canvas.width > 1){
+        const dw = f.proc.canvas.width*scale, dh = f.proc.canvas.height*scale;
+        ctx.drawImage(f.proc.canvas, (cw-dw)/2, (ch-dh)/2, dw, dh);
+      }
     } else {
-      const fit = mode === "cover" ? Math.max(cw/f.sw, ch/f.sh) : Math.min(cw/f.sw, ch/f.sh);
-      const scale = fit * zoom;
       const dw = f.sw*scale, dh = f.sh*scale;
       ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, (cw-dw)/2, (ch-dh)/2, dw, dh);
     }
