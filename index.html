@@ -146,7 +146,7 @@
         <div class="drop" id="drop">
           <input type="file" id="fileInput" accept="image/*" multiple hidden />
           Trascina qui o <b>scegli i file</b><br>
-          <span class="count">8 frame per sheet &middot; layout 8×1 o 4×2 &middot; velocità propria</span>
+          <span class="count">griglia 4×4 &middot; 16 frame per sheet &middot; velocità propria</span>
         </div>
       </section>
 
@@ -375,10 +375,9 @@
           <div class="name">${escapeHtml(s.name)}</div>
           <div class="sub">${s.img.naturalWidth}×${s.img.naturalHeight}px</div>
           <div class="params">
-            <select data-id="${s.id}" data-k="layout" class="metaInput" style="width:auto">
-              ${["8x1","4x2","2x4","1x8"].map(o => `<option value="${o}" ${s.cols+'x'+s.rows===o?"selected":""}>${o.replace('x','×')}</option>`).join("")}
-            </select>
-            <span>layout</span>
+            <span style="font-family:var(--mono);color:var(--muted)">4×4</span>
+            <span>16 frame</span>
+            <span class="grow" style="width:8px"></span>
             <input type="number" min="1" max="60" value="${s.fps}" data-id="${s.id}" data-k="fps" class="metaInput" />
             <span>fps</span>
           </div>
@@ -398,12 +397,7 @@
     const t = e.target;
     if (!t.classList.contains("metaInput")) return;
     const s = sheets.find(x => x.id == t.dataset.id); if (!s) return;
-    if (t.dataset.k === "layout"){
-      const [c, r] = t.value.split("x").map(Number);
-      s.cols = c; s.rows = r;
-    } else {
-      s.fps = Math.max(1, parseInt(t.value,10) || 1);
-    }
+    s.fps = Math.max(1, parseInt(t.value,10) || 1);
     rebuildFrames();
   }
   sheetList.addEventListener("input", onSheetParam);
@@ -423,7 +417,7 @@
     files.slice(0, room).forEach(file => {
       const url = URL.createObjectURL(file);
       const img = new Image();
-      img.onload = () => { sheets.push({ id:++uid, name:file.name, img, cols:8, rows:1, fps:getDefFps(), url }); renderSheetList(); rebuildFrames(); };
+      img.onload = () => { sheets.push({ id:++uid, name:file.name, img, cols:4, rows:4, fps:getDefFps(), url }); renderSheetList(); rebuildFrames(); };
       img.onerror = () => URL.revokeObjectURL(url);
       img.src = url;
     });
