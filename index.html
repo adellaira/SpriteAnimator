@@ -156,6 +156,13 @@
           <input type="checkbox" id="trimEnabled" checked style="accent-color:var(--amber)">
           Estrai lo sprite dallo sfondo bianco e centralo
         </label>
+        <div class="field" id="methodField">
+          <label class="lbl" for="method">Come estrarre gli sprite</label>
+          <select id="method">
+            <option value="auto">Automatica — rileva gli sprite dai vuoti bianchi</option>
+            <option value="grid">Griglia fissa 4×4</option>
+          </select>
+        </div>
         <div class="field" id="trimTolField">
           <label class="lbl" for="trimTol">Tolleranza del bianco</label>
           <div class="rangewrap">
@@ -164,6 +171,7 @@
           </div>
           <p style="font-size:11.5px;color:var(--muted-2);margin:8px 0 0;line-height:1.5">Più alta = rimuove tonalità di bianco più &ldquo;sporche&rdquo;. Il bianco all'interno dello sprite resta (viene tolto solo quello collegato ai bordi).</p>
         </div>
+        <div class="exp-status" id="extractStatus"></div>
       </section>
 
       <section class="panel ctrl">
@@ -192,6 +200,14 @@
               <option value="cover">Riempi (taglia)</option>
             </select>
           </div>
+        </div>
+        <div class="field">
+          <label class="lbl" for="trans">Transizione tra i frame</label>
+          <select id="trans">
+            <option value="cut">Stacco netto (consigliato per animazioni)</option>
+            <option value="fadeSheet">Dissolvenza solo tra sheet diversi</option>
+            <option value="fade">Dissolvenza tra tutti i frame</option>
+          </select>
         </div>
         <div class="field">
           <label class="lbl">Sfondo</label>
@@ -260,7 +276,8 @@
   "use strict";
 
   const sheets = [];   // {id, name, img, cols, rows, fps, url}
-  let frames = [];     // {img, sx, sy, sw, sh, fps, dur}
+  let frames = [];     // {img, sx, sy, sw, sh, fps, dur} or {proc, fps, dur}
+  let frameStarts = []; // start time (s) of each frame within one pass
   let curFrame = 0, playing = false, lastTs = 0, acc = 0, rafId = null, uid = 0;
   let clockSec = 0;              // elapsed time along the whole timeline
   const zk = [{ t:0, z:100 }];   // zoom keyframes {time (s), zoom (%)}
@@ -270,6 +287,7 @@
   const stage = $("stage"), emptyState = $("emptyState");
   const sheetList = $("sheetList"), fileInput = $("fileInput"), drop = $("drop");
   const trimEnabled=$("trimEnabled"), trimTol=$("trimTol"), trimTolVal=$("trimTolVal"), trimTolField=$("trimTolField");
+  const methodEl=$("method"), methodField=$("methodField"), extractStatus=$("extractStatus"), transEl=$("trans");
   const zoomCurve=$("zoomCurve"), zkTotal=$("zkTotal"), zkNow=$("zkNow"),
         zkList=$("zkList"), zkAdd=$("zkAdd"), zkSmooth=$("zkSmooth");
   const fpsEl = $("fps"), fpsVal = $("fpsVal"), applyAll = $("applyAll");
@@ -294,13 +312,15 @@
     frames = [];
     const trim = trimEnabled.checked;
     const tol = parseInt(trimTol.value, 10);
+    const method = methodEl.value;
     for (const s of sheets){
       const cols = Math.max(1, s.cols || 8);
       const rows = Math.max(1, s.rows || 1);
       const fps = Math.max(1, s.fps || 12);
+      const startLen = frames.length;
       if (trim){
-        ensureProcessed(s, tol);
-        for (let idx=0; idx<cols*rows; idx++)
+        ensureProcessed(s, tol, method);
+        for (let idx=0; idx<s.proc.length; idx++)
           frames.push({ proc:s.proc[idx], fps, dur:1000/fps });
       } else {
         const fw = s.img.naturalWidth / cols, fh = s.img.naturalHeight / rows;
@@ -308,15 +328,24 @@
           for (let cIdx=0;cIdx<cols;cIdx++)
             frames.push({ img:s.img, sx:cIdx*fw, sy:r*fh, sw:fw, sh:fh, fps, dur:1000/fps });
       }
+      // mark sheet boundaries for the transition option
+      if (frames.length > startLen){
+        frames[startLen].sheetFirst = true;
+        frames[frames.length-1].sheetLast = true;
+      }
     }
+    // cumulative start time (seconds) of each frame within one pass
+    frameStarts = []; let acc2 = 0;
+    for (const f of frames){ frameStarts.push(acc2); acc2 += f.dur/1000; }
     if (curFrame >= frames.length) curFrame = 0;
     const has = frames.length > 0;
     emptyState.style.display = has ? "none" : "";
     canvas.style.display = has ? "block" : "none";
     playBtn.disabled = restartBtn.disabled = exportBtn.disabled = !has;
-    has ? drawFrame(curFrame) : clearStage();
+    has ? render() : clearStage();
     updateReadout();
     updateZoomMeta();
+    updateExtractStatus();
   }
 
   function clearStage(){ setCanvasSize(); ctx.clearRect(0,0,canvas.width,canvas.height); }
@@ -344,29 +373,59 @@
     return a[a.length-1].z;
   }
 
-  function drawFrame(i){
-    setCanvasSize();
-    const f = frames[i];
-    if (!f){ clearStage(); return; }
-    paintBg();
+  function drawOne(i, alpha){
+    const f = frames[i]; if (!f) return;
     const cw = canvas.width, ch = canvas.height, mode = fitEl.value;
     const zoom = zoomPercentAt(clockSec) / 100;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
+    ctx.globalAlpha = alpha;
     if (f.proc){
       const p = f.proc;
-      // scale based on the whole cell (uniform across frames), content centered
       const fit = mode === "cover" ? Math.max(cw/p.cellW, ch/p.cellH) : Math.min(cw/p.cellW, ch/p.cellH);
       const scale = fit * zoom;
       const dw = p.canvas.width*scale, dh = p.canvas.height*scale;
-      ctx.drawImage(p.canvas, (cw-dw)/2, (ch-dh)/2, dw, dh);
+      if (p.canvas.width>1) ctx.drawImage(p.canvas, (cw-dw)/2, (ch-dh)/2, dw, dh);
     } else {
       const fit = mode === "cover" ? Math.max(cw/f.sw, ch/f.sh) : Math.min(cw/f.sw, ch/f.sh);
       const scale = fit * zoom;
       const dw = f.sw*scale, dh = f.sh*scale;
       ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, (cw-dw)/2, (ch-dh)/2, dw, dh);
     }
+    ctx.globalAlpha = 1;
   }
+
+  // find frame index + fractional progress within it, for a time inside one pass
+  function frameAt(passSec){
+    const n = frames.length; if (!n) return { i:0, frac:0 };
+    for (let i=0;i<n;i++){
+      const end = frameStarts[i] + frames[i].dur/1000;
+      if (passSec < end) return { i, frac:(passSec - frameStarts[i])/(frames[i].dur/1000) };
+    }
+    return { i:n-1, frac:1 };
+  }
+
+  // draw the current state (respects timeline clock + transition mode)
+  function render(){
+    setCanvasSize();
+    if (!frames.length){ clearStage(); return; }
+    paintBg();
+    const onePass = onePassSeconds();
+    const passSec = onePass > 0 ? (clockSec % onePass) : 0;
+    const { i, frac } = frameAt(passSec);
+    curFrame = i;
+    const mode = transEl.value;
+    const next = (i+1) % frames.length;
+    const boundary = frames[i].sheetLast && frames[next].sheetFirst;
+    if (mode === "fade" && frames.length > 1){
+      drawOne(i, 1-frac); drawOne(next, frac);
+    } else if (mode === "fadeSheet" && frames.length > 1 && boundary){
+      drawOne(i, 1-frac); drawOne(next, frac);
+    } else {
+      drawOne(i, 1);
+    }
+  }
+  const drawFrame = () => render(); // kept for existing idle-redraw callers
 
   // ---- white-background removal + trim (per cell) ----
   function trimAndKey(imageData, w, h, tol){
@@ -392,30 +451,96 @@
     return { x:minx, y:miny, w:maxx-minx+1, h:maxy-miny+1 };
   }
 
-  function processSheet(s, tol){
-    const cols=s.cols, rows=s.rows;
+  // key out the border-connected white in-place (no bbox); returns nothing
+  function floodKey(imageData, w, h, tol){
+    const d = imageData.data;
+    const isBg = (p) => { const a=d[p*4+3]; if (a===0) return true;
+      return d[p*4] >= 255-tol && d[p*4+1] >= 255-tol && d[p*4+2] >= 255-tol; };
+    const visited = new Uint8Array(w*h);
+    const stack = [];
+    const seed = (x,y) => { if (x<0||y<0||x>=w||y>=h) return; const p=y*w+x;
+      if (!visited[p] && isBg(p)){ visited[p]=1; stack.push(p); } };
+    for (let x=0;x<w;x++){ seed(x,0); seed(x,h-1); }
+    for (let y=0;y<h;y++){ seed(0,y); seed(w-1,y); }
+    while (stack.length){
+      const p = stack.pop(); const x = p%w, y = (p/w)|0;
+      d[p*4+3] = 0; seed(x+1,y); seed(x-1,y); seed(x,y+1); seed(x,y-1);
+    }
+  }
+
+  // split a projection profile into bands, merging tiny gaps and dropping tiny bands
+  function bands(has, n, minGap, minSz){
+    const out=[]; let i=0;
+    while (i<n){
+      while (i<n && !has[i]) i++;
+      if (i>=n) break;
+      let a=i; while (i<n && has[i]) i++; let b=i-1;
+      while (i<n){ let g=i; while (g<n && !has[g]) g++;
+        if (g<n && (g-i)<minGap){ i=g; while (i<n && has[i]) i++; b=i-1; } else break; }
+      if (b-a+1 >= minSz) out.push({ a, b });
+    }
+    return out;
+  }
+
+  // detect individual sprites on a keyed image via empty rows/columns (reading order)
+  function detectSprites(id, w, h){
+    const d=id.data;
+    const ink=(x,y)=> d[(y*w+x)*4+3] > 0;
+    const rowHas=new Uint8Array(h);
+    for (let y=0;y<h;y++){ for (let x=0;x<w;x++){ if (ink(x,y)){ rowHas[y]=1; break; } } }
+    const minGapV=Math.max(2, Math.round(h*0.012)), minSzV=Math.max(3, Math.round(h*0.02));
+    const minGapH=Math.max(2, Math.round(w*0.012)), minSzH=Math.max(3, Math.round(w*0.02));
+    const boxes=[];
+    for (const rb of bands(rowHas, h, minGapV, minSzV)){
+      const colHas=new Uint8Array(w);
+      for (let x=0;x<w;x++){ for (let y=rb.a;y<=rb.b;y++){ if (ink(x,y)){ colHas[x]=1; break; } } }
+      for (const cb of bands(colHas, w, minGapH, minSzH)){
+        let minx=cb.b, maxx=cb.a, miny=rb.b, maxy=rb.a;
+        for (let y=rb.a;y<=rb.b;y++) for (let x=cb.a;x<=cb.b;x++){
+          if (ink(x,y)){ if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y; } }
+        if (maxx>=minx && maxy>=miny) boxes.push({ x:minx, y:miny, w:maxx-minx+1, h:maxy-miny+1 });
+      }
+    }
+    return boxes;
+  }
+
+  function processSheet(s, tol, method){
     const iw=s.img.naturalWidth, ih=s.img.naturalHeight;
-    const cw=Math.floor(iw/cols), ch=Math.floor(ih/rows);
     const off=document.createElement("canvas"); off.width=iw; off.height=ih;
     const octx=off.getContext("2d", { willReadFrequently:true });
     octx.drawImage(s.img, 0, 0);
     const proc=[];
-    for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){
-      const sx=c*cw, sy=r*ch;
-      const id=octx.getImageData(sx, sy, cw, ch);
-      const box=trimAndKey(id, cw, ch, tol);
-      const cv=document.createElement("canvas");
-      if (!box){ cv.width=1; cv.height=1; proc.push({ canvas:cv, cellW:cw, cellH:ch }); continue; }
-      const tmp=document.createElement("canvas"); tmp.width=cw; tmp.height=ch;
+    const cropFrom = (id, box, cellW, cellH) => {
+      const tmp=document.createElement("canvas"); tmp.width=id.width; tmp.height=id.height;
       tmp.getContext("2d").putImageData(id, 0, 0);
-      cv.width=box.w; cv.height=box.h;
+      const cv=document.createElement("canvas"); cv.width=box.w; cv.height=box.h;
       cv.getContext("2d").drawImage(tmp, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
-      proc.push({ canvas:cv, cellW:cw, cellH:ch });
+      return { canvas:cv, cellW, cellH };
+    };
+
+    if (method === "auto"){
+      const id=octx.getImageData(0, 0, iw, ih);
+      floodKey(id, iw, ih, tol);
+      const boxes=detectSprites(id, iw, ih);
+      const cellW=Math.max(1, ...boxes.map(b=>b.w));
+      const cellH=Math.max(1, ...boxes.map(b=>b.h));
+      for (const b of boxes) proc.push(cropFrom(id, b, cellW, cellH));
+      s.detected=boxes.length;
+    } else {
+      const cols=s.cols, rows=s.rows;
+      const cw=Math.floor(iw/cols), ch=Math.floor(ih/rows);
+      for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){
+        const id=octx.getImageData(c*cw, r*ch, cw, ch);
+        const box=trimAndKey(id, cw, ch, tol);
+        if (!box){ const cv=document.createElement("canvas"); cv.width=1; cv.height=1; proc.push({ canvas:cv, cellW:cw, cellH:ch }); continue; }
+        proc.push(cropFrom(id, box, cw, ch));
+      }
+      s.detected=proc.length;
     }
-    s.proc=proc; s.procTol=tol;
+    s.proc=proc; s.procTol=tol; s.procMethod=method;
   }
-  function ensureProcessed(s, tol){ if (!(s.proc && s.procTol===tol)) processSheet(s, tol); }
-  function invalidateProc(){ sheets.forEach(s => { s.proc=null; s.procTol=null; }); }
+  function ensureProcessed(s, tol, method){ if (!(s.proc && s.procTol===tol && s.procMethod===method)) processSheet(s, tol, method); }
+  function invalidateProc(){ sheets.forEach(s => { s.proc=null; s.procTol=null; s.procMethod=null; }); }
 
   function onePassSeconds(){ return frames.reduce((a,f)=>a + 1/f.fps, 0); }
 
@@ -431,19 +556,14 @@
   function loop(ts){
     if (!playing) return;
     if (!lastTs) lastTs = ts;
-    const dt = ts - lastTs; acc += dt; lastTs = ts;
+    const dt = ts - lastTs; lastTs = ts;
     const tot = totalDur();
     clockSec += dt/1000;
     if (tot > 0 && clockSec >= tot) clockSec %= tot;
-    let guard = 0;
-    while (frames.length && acc >= frames[curFrame].dur && guard++ < 240){
-      acc -= frames[curFrame].dur;
-      curFrame = (curFrame+1) % frames.length;
-    }
-    drawFrame(curFrame); updateReadout(); drawCurve();
+    render(); updateReadout(); drawCurve();
     rafId = requestAnimationFrame(loop);
   }
-  function play(){ if(!frames.length) return; playing=true; lastTs=0; acc=0; playLabel.textContent="Pausa"; playBtn.querySelector("path").setAttribute("d","M4 3h3v10H4zM9 3h3v10H9z"); rafId=requestAnimationFrame(loop); }
+  function play(){ if(!frames.length) return; playing=true; lastTs=0; playLabel.textContent="Pausa"; playBtn.querySelector("path").setAttribute("d","M4 3h3v10H4zM9 3h3v10H9z"); rafId=requestAnimationFrame(loop); }
   function pause(){ playing=false; if(rafId) cancelAnimationFrame(rafId); playLabel.textContent="Play"; playBtn.querySelector("path").setAttribute("d","M4 3l9 5-9 5z"); }
   function toggle(){ playing ? pause() : play(); }
 
@@ -522,9 +642,11 @@
   fitEl.addEventListener("change", () => drawFrame(curFrame));
   bgColor.addEventListener("input", () => drawFrame(curFrame));
   bgTransparent.addEventListener("change", () => drawFrame(curFrame));
-  trimEnabled.addEventListener("change", () => { trimTolField.style.opacity = trimEnabled.checked ? "1" : ".4"; rebuildFrames(); });
+  trimEnabled.addEventListener("change", () => { trimTolField.style.opacity = trimEnabled.checked ? "1" : ".4"; methodField.style.opacity = trimEnabled.checked ? "1" : ".4"; rebuildFrames(); });
   trimTol.addEventListener("input", () => { trimTolVal.textContent = trimTol.value; });
   trimTol.addEventListener("change", () => { invalidateProc(); rebuildFrames(); });
+  methodEl.addEventListener("change", () => { invalidateProc(); rebuildFrames(); });
+  transEl.addEventListener("change", () => render());
   playBtn.addEventListener("click", toggle);
   restartBtn.addEventListener("click", () => { curFrame=0; acc=0; lastTs=0; clockSec=0; drawFrame(0); updateReadout(); drawCurve(); });
   document.addEventListener("keydown", (e) => {
@@ -532,6 +654,15 @@
   });
 
   // ---- zoom keyframe editor ----
+  function updateExtractStatus(){
+    if (!trimEnabled.checked){ extractStatus.textContent = "estrazione disattivata"; return; }
+    if (!sheets.length){ extractStatus.textContent = ""; return; }
+    const counts = sheets.map(s => s.detected ?? "?");
+    const total = frames.length;
+    extractStatus.textContent = methodEl.value === "auto"
+      ? `rilevati ${counts.join(" + ")} sprite (tot ${total})`
+      : `${total} frame estratti`;
+  }
   function updateZoomMeta(){
     const tot = totalDur();
     zkTotal.textContent = tot.toFixed(1) + "s";
@@ -604,8 +735,6 @@
 
   async function recordSequence(mime){
     setCanvasSize();
-    const loops = parseInt(loopsEl.value,10);
-    const totalFrames = frames.length * loops;
     const stream = canvas.captureStream(0);
     const track = stream.getVideoTracks()[0];
     const canReq = typeof track.requestFrame === "function";
@@ -614,17 +743,19 @@
     rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     const done = new Promise(res => { rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || mime || "video/webm" })); });
     rec.start();
-    let elapsed = 0;
-    for (let n=0; n<totalFrames; n++){
-      const f = frames[n % frames.length];
-      clockSec = elapsed;
-      drawFrame(n % frames.length);
+    const tot = totalDur();
+    const maxFps = Math.max(...frames.map(f=>f.fps), 12);
+    const outFps = Math.min(60, Math.max(24, maxFps));   // sampling rate of the video
+    const samples = Math.max(1, Math.round(tot * outFps));
+    const dt = 1000 / outFps;
+    for (let n=0; n<samples; n++){
+      clockSec = n / outFps;
+      render();
       if (canReq) track.requestFrame();
-      progressBar.style.width = ((n+1)/totalFrames*100).toFixed(1) + "%";
-      elapsed += f.dur/1000;
-      await sleep(f.dur);
+      progressBar.style.width = ((n+1)/samples*100).toFixed(1) + "%";
+      await sleep(dt);
     }
-    await sleep(frames[(totalFrames-1) % frames.length].dur);
+    await sleep(dt);
     rec.stop();
     return done;
   }
