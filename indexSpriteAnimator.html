@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sprite Reel — da spritesheet a video verticale</title>
+<style>
+  :root{
+    --bg:#14110f; --panel:#1d1916; --panel-2:#241f1a;
+    --line:#352d26; --line-soft:#2a231e;
+    --text:#efe7dd; --muted:#9b8f82; --muted-2:#6f655b;
+    --amber:#f0a83c; --amber-dim:#b9812e; --rec:#e5564b; --ok:#5bc28a;
+    --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", "Roboto Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{min-height:100vh;background-image:radial-gradient(120% 80% at 50% -10%, rgba(240,168,60,.06), transparent 60%);}
+  a{color:var(--amber);}
+  .wrap{max-width:1140px;margin:0 auto;padding:28px 20px 64px;}
+
+  header.mast{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:26px;}
+  .brand{display:flex;align-items:center;gap:14px;}
+  .strip{width:44px;height:44px;border-radius:8px;background:#0d0b09;position:relative;overflow:hidden;border:1px solid var(--line);flex:0 0 auto;}
+  .strip::before,.strip::after{content:"";position:absolute;left:0;right:0;height:7px;background-image:radial-gradient(circle, #2a231e 38%, transparent 40%);background-size:9px 7px;background-position:center;}
+  .strip::before{top:3px;} .strip::after{bottom:3px;}
+  .strip span{position:absolute;inset:11px 6px;border-radius:3px;background:linear-gradient(180deg,var(--amber),var(--amber-dim));opacity:.92;}
+  h1{font-size:19px;letter-spacing:.04em;margin:0;font-weight:650;}
+  .brand p{margin:2px 0 0;color:var(--muted);font-size:12.5px;}
+  .lede{color:var(--muted);font-size:13px;max-width:340px;line-height:1.5;text-align:right;}
+
+  .layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:26px;align-items:start;}
+  @media (max-width:880px){ .layout{grid-template-columns:1fr;} }
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted-2);margin:0 0 12px;}
+
+  .stage-panel{padding:18px;}
+  .stage{position:relative;background:#0c0a08;border-radius:12px;border:1px solid var(--line-soft);display:flex;align-items:center;justify-content:center;min-height:320px;overflow:hidden;}
+  .stage canvas{display:block;max-height:62vh;max-width:100%;height:auto;border-radius:4px;background:transparent;}
+  .stage .empty{color:var(--muted-2);font-family:var(--mono);font-size:12.5px;letter-spacing:.05em;text-align:center;padding:40px;line-height:1.7;}
+  .stage .empty b{color:var(--muted);display:block;font-size:14px;margin-bottom:6px;letter-spacing:.12em;}
+
+  .transport{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap;}
+  .readout{font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;gap:16px;margin-left:auto;}
+  .readout b{color:var(--text);font-weight:600;}
+
+  button{font-family:inherit;cursor:pointer;border:none;}
+  .btn{display:inline-flex;align-items:center;gap:8px;background:var(--panel-2);color:var(--text);border:1px solid var(--line);padding:9px 14px;border-radius:9px;font-size:13px;font-weight:550;transition:border-color .15s, background .15s, transform .05s;}
+  .btn:hover{border-color:var(--amber-dim);}
+  .btn:active{transform:translateY(1px);}
+  .btn[disabled]{opacity:.4;cursor:not-allowed;}
+  .btn.primary{background:linear-gradient(180deg,#f0a83c,#d8902c);color:#241500;border-color:transparent;font-weight:650;}
+  .btn.primary:hover{filter:brightness(1.05);}
+  .btn.rec{background:var(--rec);color:#fff;border-color:transparent;}
+  .btn.rec:hover{filter:brightness(1.06);}
+  .btn.ghost{background:transparent;}
+  .icon{width:16px;height:16px;display:inline-block;}
+
+  .ctrl{padding:18px;margin-bottom:20px;}
+  .field{margin-bottom:16px;} .field:last-child{margin-bottom:0;}
+  label.lbl{display:block;font-size:12.5px;color:var(--muted);margin-bottom:7px;letter-spacing:.02em;}
+  .rangewrap{display:flex;align-items:center;gap:12px;}
+  input[type=range]{flex:1;accent-color:var(--amber);height:4px;}
+  .val{font-family:var(--mono);font-size:13px;color:var(--text);min-width:62px;text-align:right;}
+  select,input[type=number]{width:100%;background:#0e0c0a;border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:8px;font-family:var(--mono);font-size:13px;}
+  input[type=color]{width:40px;height:34px;padding:2px;background:#0e0c0a;border:1px solid var(--line);border-radius:8px;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .inline{display:flex;align-items:center;gap:10px;}
+
+  .sheets{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}
+  .sheet{display:flex;gap:12px;align-items:flex-start;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:10px;padding:9px;}
+  .sheet .thumb{width:84px;height:48px;flex:0 0 auto;border-radius:5px;background:#0c0a08;background-size:cover;background-position:left center;border:1px solid var(--line);}
+  .sheet .meta{flex:1;min-width:0;}
+  .sheet .name{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sheet .sub{font-family:var(--mono);font-size:11px;color:var(--muted-2);margin-top:3px;}
+  .sheet .params{display:flex;align-items:center;gap:6px;margin-top:7px;flex-wrap:wrap;}
+  .metaInput{width:52px;padding:4px 6px !important;font-size:12px !important;}
+  .sheet .params span{font-size:11px;color:var(--muted-2);}
+  .sheet .ops{display:flex;flex-direction:column;gap:4px;}
+  .minibtn{width:26px;height:22px;display:grid;place-items:center;border-radius:6px;background:#0e0c0a;border:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1;}
+  .minibtn:hover{color:var(--text);border-color:var(--amber-dim);}
+  .minibtn.del:hover{color:var(--rec);border-color:var(--rec);}
+
+  .drop{border:1.5px dashed var(--line);border-radius:11px;padding:18px;text-align:center;color:var(--muted);font-size:13px;transition:border-color .15s,background .15s;cursor:pointer;}
+  .drop:hover,.drop.over{border-color:var(--amber);background:rgba(240,168,60,.05);color:var(--text);}
+  .drop b{color:var(--amber);}
+  .count{font-family:var(--mono);font-size:11px;color:var(--muted-2);}
+
+  .twobox{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:10px;padding:10px;}
+  .twobox:hover{border-color:var(--amber-dim);}
+  .twobox span{font-size:11.5px;color:var(--muted);}
+  .thumb.tw{width:100%;height:54px;border-radius:6px;background:#0c0a08 center/contain no-repeat;border:1px dashed var(--line);}
+  .thumb.tw.set{border-style:solid;border-color:var(--amber-dim);}
+
+  .progress{height:6px;background:#0e0c0a;border-radius:99px;overflow:hidden;margin-top:12px;display:none;}
+  .progress.show{display:block;}
+  .progress i{display:block;height:100%;width:0;background:var(--rec);transition:width .12s linear;}
+  .exp-status{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:8px;min-height:16px;}
+  .dl{display:none;margin-top:10px;} .dl.show{display:block;}
+  video.preview{width:100%;border-radius:10px;margin-top:10px;background:#000;}
+
+  footer{margin-top:34px;border-top:1px solid var(--line);padding-top:16px;color:var(--muted-2);font-size:12px;line-height:1.6;}
+  kbd{font-family:var(--mono);background:#0e0c0a;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11px;color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <div class="brand">
+      <div class="strip"><span></span></div>
+      <div><h1>SPRITE REEL</h1><p>Da spritesheet a video verticale</p></div>
+    </div>
+    <p class="lede">Carica fino a 5 spritesheet, dai a ognuno la sua velocità e scarica un'unica sequenza in MP4 verticale.</p>
+  </header>
+
+  <div class="layout">
+
+    <section class="panel stage-panel">
+      <p class="eyebrow">Anteprima &mdash; sequenza unica</p>
+      <div class="stage" id="stage">
+        <div class="empty" id="emptyState"><b>NESSUN FOTOGRAMMA</b>Aggiungi uno spritesheet a destra per iniziare.</div>
+        <canvas id="canvas" width="1080" height="1920" style="display:none"></canvas>
+      </div>
+      <div class="transport">
+        <button class="btn primary" id="playBtn" disabled>
+          <svg class="icon" viewBox="0 0 16 16" fill="currentColor"><path d="M4 3l9 5-9 5z"/></svg>
+          <span id="playLabel">Play</span>
+        </button>
+        <button class="btn" id="restartBtn" disabled title="Ricomincia">
+          <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5"/></svg>
+        </button>
+        <div class="readout">
+          <span>frame <b id="rFrame">0/0</b></span>
+          <span><b id="rFps">12</b> fps</span>
+          <span><b id="rDur">0.0</b>s</span>
+        </div>
+      </div>
+    </section>
+
+    <aside>
+      <section class="panel ctrl">
+        <p class="eyebrow">Spritesheet <span class="count" id="sheetCount">(0/5)</span></p>
+        <div class="sheets" id="sheetList"></div>
+        <div class="drop" id="drop">
+          <input type="file" id="fileInput" accept="image/*" multiple hidden />
+          Trascina qui o <b>scegli i file</b><br>
+          <span class="count">8 sezioni orizzontali &middot; ogni sheet ha la sua velocità</span>
+        </div>
+      </section>
+
+      <section class="panel ctrl">
+        <p class="eyebrow">Genera transizione</p>
+        <p style="font-size:12px;color:var(--muted);margin:-4px 0 14px;line-height:1.5">Da un'immagine iniziale a una finale, crea uno spritesheet con i fotogrammi intermedi. Viene aggiunto agli sheet qui sopra.</p>
+        <div class="field row2">
+          <label class="twobox" for="twoA"><div class="thumb tw" id="thumbA"></div><span>Iniziale</span><input type="file" id="twoA" accept="image/*" hidden></label>
+          <label class="twobox" for="twoB"><div class="thumb tw" id="thumbB"></div><span>Finale</span><input type="file" id="twoB" accept="image/*" hidden></label>
+        </div>
+        <div class="field row2">
+          <div>
+            <label class="lbl" for="tweenFrames">Fotogrammi</label>
+            <input type="number" id="tweenFrames" min="2" max="16" value="8">
+          </div>
+          <div>
+            <label class="lbl" for="tweenType">Effetto</label>
+            <select id="tweenType">
+              <option value="dissolvenza">Dissolvenza</option>
+              <option value="scorrimento">Scorrimento</option>
+              <option value="zoom">Zoom</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label class="lbl" for="tweenEase">Andamento</label>
+          <select id="tweenEase">
+            <option value="morbida">Morbido</option>
+            <option value="lineare">Lineare</option>
+          </select>
+        </div>
+        <button class="btn primary" id="tweenBtn" style="width:100%;justify-content:center">Genera e aggiungi</button>
+        <div class="exp-status" id="tweenStatus"></div>
+      </section>
+
+      <section class="panel ctrl">
+        <p class="eyebrow">Velocità & formato</p>
+        <div class="field">
+          <label class="lbl" for="fps">Velocità predefinita (per i nuovi sheet)</label>
+          <div class="rangewrap">
+            <input type="range" id="fps" min="1" max="60" value="12" />
+            <span class="val"><span id="fpsVal">12</span> fps</span>
+          </div>
+          <button class="btn ghost" id="applyAll" style="margin-top:9px;width:100%;justify-content:center;font-size:12px;padding:7px">Applica questa velocità a tutti</button>
+        </div>
+        <div class="field row2">
+          <div>
+            <label class="lbl" for="size">Risoluzione verticale</label>
+            <select id="size">
+              <option value="1080x1920">1080 × 1920</option>
+              <option value="720x1280">720 × 1280</option>
+              <option value="1440x2560">1440 × 2560</option>
+            </select>
+          </div>
+          <div>
+            <label class="lbl" for="fit">Adattamento</label>
+            <select id="fit">
+              <option value="contain">Contieni (intero)</option>
+              <option value="cover">Riempi (taglia)</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label class="lbl">Sfondo</label>
+          <div class="inline">
+            <input type="color" id="bgColor" value="#000000" />
+            <label class="inline" style="gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer;">
+              <input type="checkbox" id="bgTransparent" style="accent-color:var(--amber)"> trasparente
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel ctrl">
+        <p class="eyebrow">Esporta video</p>
+        <div class="field row2">
+          <div>
+            <label class="lbl" for="format">Formato</label>
+            <select id="format">
+              <option value="mp4">MP4</option>
+              <option value="webm">WebM</option>
+            </select>
+          </div>
+          <div>
+            <label class="lbl" for="loops">Ripetizioni</label>
+            <div class="rangewrap">
+              <input type="range" id="loops" min="1" max="10" value="2" />
+              <span class="val">× <span id="loopsVal">2</span></span>
+            </div>
+          </div>
+        </div>
+        <button class="btn rec" id="exportBtn" style="width:100%;justify-content:center" disabled>
+          <svg class="icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="5"/></svg>
+          Registra & crea video
+        </button>
+        <div class="progress" id="progress"><i id="progressBar"></i></div>
+        <div class="exp-status" id="expStatus"></div>
+        <div class="dl" id="dlBox">
+          <video class="preview" id="resultVideo" controls playsinline></video>
+          <a class="btn primary" id="dlLink" download="sprite-reel.mp4" style="width:100%;justify-content:center;margin-top:10px;text-decoration:none">⬇ Scarica il video</a>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <footer>
+    Tutto avviene nel tuo browser, nessun upload su server. L'<b style="color:var(--muted)">MP4</b> viene registrato direttamente se il browser lo supporta; in caso contrario il video WebM viene convertito in MP4 con ffmpeg.wasm (richiede connessione la prima volta). Suggerimento: <kbd>spazio</kbd> per play/pausa.
+  </footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const sheets = [];   // {id, name, img, columns, fps, url}
+  let frames = [];     // {img, sx, sy, sw, sh, fps, dur}
+  let curFrame = 0, playing = false, lastTs = 0, acc = 0, rafId = null, uid = 0;
+
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("canvas"), ctx = canvas.getContext("2d");
+  const stage = $("stage"), emptyState = $("emptyState");
+  const sheetList = $("sheetList"), fileInput = $("fileInput"), drop = $("drop");
+  const twoA=$("twoA"), twoB=$("twoB"), thumbA=$("thumbA"), thumbB=$("thumbB"),
+        tweenFrames=$("tweenFrames"), tweenType=$("tweenType"), tweenEase=$("tweenEase"),
+        tweenBtn=$("tweenBtn"), tweenStatus=$("tweenStatus");
+  const fpsEl = $("fps"), fpsVal = $("fpsVal"), applyAll = $("applyAll");
+  const sizeEl = $("size"), fitEl = $("fit"), bgColor = $("bgColor"), bgTransparent = $("bgTransparent");
+  const loopsEl = $("loops"), loopsVal = $("loopsVal"), formatEl = $("format");
+  const playBtn = $("playBtn"), playLabel = $("playLabel"), restartBtn = $("restartBtn"), exportBtn = $("exportBtn");
+  const rFrame = $("rFrame"), rFps = $("rFps"), rDur = $("rDur"), sheetCount = $("sheetCount");
+  const progress = $("progress"), progressBar = $("progressBar"), expStatus = $("expStatus");
+  const dlBox = $("dlBox"), resultVideo = $("resultVideo"), dlLink = $("dlLink");
+
+  const getDefFps = () => parseInt(fpsEl.value, 10);
+  const getSize = () => sizeEl.value.split("x").map(Number);
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function setCanvasSize(){
+    const [w,h] = getSize();
+    if (canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; }
+  }
+
+  function rebuildFrames(){
+    frames = [];
+    for (const s of sheets){
+      const cols = Math.max(1, s.columns || 8);
+      const fps = Math.max(1, s.fps || 12);
+      const fw = s.img.naturalWidth / cols, fh = s.img.naturalHeight;
+      for (let i=0;i<cols;i++) frames.push({ img:s.img, sx:i*fw, sy:0, sw:fw, sh:fh, fps, dur:1000/fps });
+    }
+    if (curFrame >= frames.length) curFrame = 0;
+    const has = frames.length > 0;
+    emptyState.style.display = has ? "none" : "";
+    canvas.style.display = has ? "block" : "none";
+    playBtn.disabled = restartBtn.disabled = exportBtn.disabled = !has;
+    has ? drawFrame(curFrame) : clearStage();
+    updateReadout();
+  }
+
+  function clearStage(){ setCanvasSize(); ctx.clearRect(0,0,canvas.width,canvas.height); }
+
+  function paintBg(){
+    if (bgTransparent.checked) ctx.clearRect(0,0,canvas.width,canvas.height);
+    else { ctx.fillStyle = bgColor.value; ctx.fillRect(0,0,canvas.width,canvas.height); }
+  }
+
+  function drawFrame(i){
+    setCanvasSize();
+    const f = frames[i];
+    if (!f){ clearStage(); return; }
+    paintBg();
+    const cw = canvas.width, ch = canvas.height, mode = fitEl.value;
+    const scale = mode === "cover" ? Math.max(cw/f.sw, ch/f.sh) : Math.min(cw/f.sw, ch/f.sh);
+    const dw = f.sw*scale, dh = f.sh*scale, dx = (cw-dw)/2, dy = (ch-dh)/2;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, dx, dy, dw, dh);
+  }
+
+  function onePassSeconds(){ return frames.reduce((a,f)=>a + 1/f.fps, 0); }
+
+  function updateReadout(){
+    const total = frames.length;
+    rFrame.textContent = `${total ? curFrame+1 : 0}/${total}`;
+    rFps.textContent = total ? frames[curFrame].fps : getDefFps();
+    rDur.textContent = onePassSeconds().toFixed(1);
+  }
+
+  // ---- playback (per-frame duration) ----
+  function loop(ts){
+    if (!playing) return;
+    if (!lastTs) lastTs = ts;
+    acc += ts - lastTs; lastTs = ts;
+    let guard = 0;
+    while (frames.length && acc >= frames[curFrame].dur && guard++ < 240){
+      acc -= frames[curFrame].dur;
+      curFrame = (curFrame+1) % frames.length;
+      drawFrame(curFrame); updateReadout();
+    }
+    rafId = requestAnimationFrame(loop);
+  }
+  function play(){ if(!frames.length) return; playing=true; lastTs=0; acc=0; playLabel.textContent="Pausa"; playBtn.querySelector("path").setAttribute("d","M4 3h3v10H4zM9 3h3v10H9z"); rafId=requestAnimationFrame(loop); }
+  function pause(){ playing=false; if(rafId) cancelAnimationFrame(rafId); playLabel.textContent="Play"; playBtn.querySelector("path").setAttribute("d","M4 3l9 5-9 5z"); }
+  function toggle(){ playing ? pause() : play(); }
+
+  // ---- sheets ----
+  function renderSheetList(){
+    sheetList.innerHTML = "";
+    sheets.forEach((s, idx) => {
+      const el = document.createElement("div");
+      el.className = "sheet";
+      el.innerHTML = `
+        <div class="thumb" style="background-image:url('${s.url}')"></div>
+        <div class="meta">
+          <div class="name">${escapeHtml(s.name)}</div>
+          <div class="sub">${s.img.naturalWidth}×${s.img.naturalHeight}px</div>
+          <div class="params">
+            <input type="number" min="1" max="64" value="${s.columns}" data-id="${s.id}" data-k="columns" class="metaInput" />
+            <span>sezioni</span>
+            <input type="number" min="1" max="60" value="${s.fps}" data-id="${s.id}" data-k="fps" class="metaInput" />
+            <span>fps</span>
+          </div>
+        </div>
+        <div class="ops">
+          <button class="minibtn up" data-id="${s.id}" title="Su" ${idx===0?"disabled style=opacity:.3":""}>▲</button>
+          <button class="minibtn down" data-id="${s.id}" title="Giù" ${idx===sheets.length-1?"disabled style=opacity:.3":""}>▼</button>
+          <button class="minibtn del" data-id="${s.id}" title="Rimuovi">✕</button>
+        </div>`;
+      sheetList.appendChild(el);
+    });
+    sheetCount.textContent = `(${sheets.length}/5)`;
+    drop.style.display = sheets.length >= 5 ? "none" : "";
+  }
+
+  sheetList.addEventListener("input", (e) => {
+    const t = e.target;
+    if (!t.classList.contains("metaInput")) return;
+    const s = sheets.find(x => x.id == t.dataset.id); if (!s) return;
+    const v = Math.max(1, parseInt(t.value,10) || 1);
+    if (t.dataset.k === "columns") s.columns = v; else s.fps = v;
+    rebuildFrames();
+  });
+  sheetList.addEventListener("click", (e) => {
+    const btn = e.target.closest(".minibtn"); if (!btn) return;
+    const i = sheets.findIndex(x => x.id == btn.dataset.id); if (i<0) return;
+    if (btn.classList.contains("del")){ URL.revokeObjectURL(sheets[i].url); sheets.splice(i,1); }
+    else if (btn.classList.contains("up") && i>0){ [sheets[i-1],sheets[i]]=[sheets[i],sheets[i-1]]; }
+    else if (btn.classList.contains("down") && i<sheets.length-1){ [sheets[i+1],sheets[i]]=[sheets[i],sheets[i+1]]; }
+    renderSheetList(); rebuildFrames();
+  });
+
+  function addFiles(list){
+    const files = [...list].filter(f => f.type.startsWith("image/"));
+    const room = 5 - sheets.length; if (room <= 0) return;
+    files.slice(0, room).forEach(file => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { sheets.push({ id:++uid, name:file.name, img, columns:8, fps:getDefFps(), url }); renderSheetList(); rebuildFrames(); };
+      img.onerror = () => URL.revokeObjectURL(url);
+      img.src = url;
+    });
+  }
+
+  drop.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", (e) => { addFiles(e.target.files); fileInput.value=""; });
+  ["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => addFiles(e.dataTransfer.files));
+  ["dragover","drop"].forEach(ev => stage.addEventListener(ev, e => e.preventDefault()));
+  stage.addEventListener("drop", e => addFiles(e.dataTransfer.files));
+
+  // ---- transition generator (A -> B in N frames) ----
+  let tweenImgA = null, tweenImgB = null;
+  function loadTween(file, slot){
+    if (!file || !file.type.startsWith("image/")) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      if (slot === "A"){ tweenImgA = img; thumbA.style.backgroundImage = `url('${url}')`; thumbA.classList.add("set"); }
+      else { tweenImgB = img; thumbB.style.backgroundImage = `url('${url}')`; thumbB.classList.add("set"); }
+      tweenStatus.textContent = "";
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
+  }
+  twoA.addEventListener("change", e => loadTween(e.target.files[0], "A"));
+  twoB.addEventListener("change", e => loadTween(e.target.files[0], "B"));
+
+  const easeFns = { lineare: t => t, morbida: t => t*t*(3-2*t) };
+
+  function generateTween(){
+    if (!tweenImgA || !tweenImgB){ tweenStatus.textContent = "Carica immagine iniziale e finale."; return; }
+    if (sheets.length >= 5){ tweenStatus.textContent = "Hai già 5 sheet — rimuovine uno."; return; }
+    const n = Math.min(16, Math.max(2, parseInt(tweenFrames.value,10) || 8));
+    const ease = easeFns[tweenEase.value] || easeFns.morbida;
+    const type = tweenType.value;
+    const fW = Math.max(tweenImgA.naturalWidth,  tweenImgB.naturalWidth);
+    const fH = Math.max(tweenImgA.naturalHeight, tweenImgB.naturalHeight);
+
+    const strip = document.createElement("canvas");
+    strip.width = fW * n; strip.height = fH;
+    const c = strip.getContext("2d");
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = "high";
+
+    const place = (img, ox, alpha, offsetX=0, scaleMul=1) => {
+      const s = Math.min(fW/img.naturalWidth, fH/img.naturalHeight) * scaleMul;
+      const w = img.naturalWidth*s, h = img.naturalHeight*s;
+      const x = ox + (fW - w)/2 + offsetX, y = (fH - h)/2;
+      c.globalAlpha = Math.max(0, Math.min(1, alpha));
+      c.drawImage(img, x, y, w, h);
+      c.globalAlpha = 1;
+    };
+
+    for (let i=0;i<n;i++){
+      const t = ease(i/(n-1));
+      const ox = i*fW;
+      c.save();
+      c.beginPath(); c.rect(ox, 0, fW, fH); c.clip();
+      if (type === "scorrimento"){
+        place(tweenImgA, ox, 1, -t*fW);
+        place(tweenImgB, ox, 1, (1-t)*fW);
+      } else if (type === "zoom"){
+        place(tweenImgA, ox, 1-t, 0, 1);
+        place(tweenImgB, ox, t, 0, 0.6 + 0.4*t);
+      } else {
+        place(tweenImgA, ox, 1-t);
+        place(tweenImgB, ox, t);
+      }
+      c.restore();
+    }
+
+    const dataUrl = strip.toDataURL("image/png");
+    const img = new Image();
+    img.onload = () => {
+      sheets.push({ id:++uid, name:`transizione (${n}f)`, img, columns:n, fps:getDefFps(), url:dataUrl });
+      renderSheetList(); rebuildFrames();
+      tweenStatus.textContent = `Transizione di ${n} frame aggiunta agli sheet ✓`;
+    };
+    img.src = dataUrl;
+  }
+  tweenBtn.addEventListener("click", generateTween);
+
+  fpsEl.addEventListener("input", () => { fpsVal.textContent = fpsEl.value; });
+  applyAll.addEventListener("click", () => { const v=getDefFps(); sheets.forEach(s=>s.fps=v); renderSheetList(); rebuildFrames(); });
+  loopsEl.addEventListener("input", () => { loopsVal.textContent = loopsEl.value; });
+  sizeEl.addEventListener("change", () => { setCanvasSize(); drawFrame(curFrame); });
+  fitEl.addEventListener("change", () => drawFrame(curFrame));
+  bgColor.addEventListener("input", () => drawFrame(curFrame));
+  bgTransparent.addEventListener("change", () => drawFrame(curFrame));
+  playBtn.addEventListener("click", toggle);
+  restartBtn.addEventListener("click", () => { curFrame=0; acc=0; lastTs=0; drawFrame(0); updateReadout(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space" && !["INPUT","SELECT","TEXTAREA"].includes(e.target.tagName)){ e.preventDefault(); if(!playBtn.disabled) toggle(); }
+  });
+
+  // ---- export ----
+  const pickFrom = (list) => list.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+  const pickMp4  = () => pickFrom(["video/mp4;codecs=avc1.640028","video/mp4;codecs=avc1.42E01E","video/mp4;codecs=h264","video/mp4"]);
+  const pickWebm = () => pickFrom(["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"]);
+
+  async function recordSequence(mime){
+    setCanvasSize();
+    const loops = parseInt(loopsEl.value,10);
+    const totalFrames = frames.length * loops;
+    const stream = canvas.captureStream(0);
+    const track = stream.getVideoTracks()[0];
+    const canReq = typeof track.requestFrame === "function";
+    const rec = new MediaRecorder(stream, mime ? { mimeType:mime, videoBitsPerSecond:8_000_000 } : undefined);
+    const chunks = [];
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    const done = new Promise(res => { rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || mime || "video/webm" })); });
+    rec.start();
+    for (let n=0; n<totalFrames; n++){
+      const f = frames[n % frames.length];
+      drawFrame(n % frames.length);
+      if (canReq) track.requestFrame();
+      progressBar.style.width = ((n+1)/totalFrames*100).toFixed(1) + "%";
+      await sleep(f.dur);
+    }
+    await sleep(frames[(totalFrames-1) % frames.length].dur);
+    rec.stop();
+    return done;
+  }
+
+  let ffmpeg = null;
+  async function getFfmpeg(){
+    if (ffmpeg) return ffmpeg;
+    expStatus.textContent = "Caricamento del convertitore MP4…";
+    const { FFmpeg } = await import("https://esm.sh/@ffmpeg/ffmpeg@0.12.10");
+    const { toBlobURL, fetchFile } = await import("https://esm.sh/@ffmpeg/util@0.12.1");
+    const ff = new FFmpeg();
+    const base = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
+    await ff.load({
+      coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm"),
+    });
+    ffmpeg = { ff, fetchFile };
+    return ffmpeg;
+  }
+  async function transcodeToMp4(blob){
+    const { ff, fetchFile } = await getFfmpeg();
+    expStatus.textContent = "Conversione in MP4…";
+    await ff.writeFile("in.webm", await fetchFile(blob));
+    await ff.exec(["-i","in.webm","-c:v","libx264","-preset","veryfast","-pix_fmt","yuv420p","-movflags","+faststart","out.mp4"]);
+    const data = await ff.readFile("out.mp4");
+    return new Blob([data.buffer], { type:"video/mp4" });
+  }
+
+  async function exportVideo(){
+    if (!frames.length || !window.MediaRecorder){ expStatus.textContent = "MediaRecorder non supportato in questo browser."; return; }
+    pause();
+    exportBtn.disabled = true; playBtn.disabled = true;
+    dlBox.classList.remove("show");
+    progress.classList.add("show"); progressBar.style.width = "0%";
+
+    const format = formatEl.value;
+    const wantMp4 = format === "mp4";
+    let recordMime = wantMp4 ? pickMp4() : pickWebm();
+    const nativeMp4 = wantMp4 && /mp4/.test(recordMime);
+    if (wantMp4 && !recordMime) recordMime = pickWebm(); // record webm, transcode after
+
+    expStatus.textContent = "Registrazione in corso…";
+    let blob;
+    try { blob = await recordSequence(recordMime); }
+    catch(err){ expStatus.textContent = "Errore nella registrazione: " + err.message; resetExport(); return; }
+
+    let finalBlob = blob, ext = "webm";
+    if (wantMp4){
+      if (nativeMp4){ ext = "mp4"; }
+      else {
+        try { finalBlob = await transcodeToMp4(blob); ext = "mp4"; }
+        catch(err){
+          finalBlob = blob; ext = "webm";
+          expStatus.textContent = "Conversione MP4 non riuscita — scarico in WebM. (" + (err.message||err) + ")";
+        }
+      }
+    }
+
+    const url = URL.createObjectURL(finalBlob);
+    resultVideo.src = url;
+    dlLink.href = url;
+    const fpsTag = sheets.length ? "var" : getDefFps();
+    dlLink.download = `sprite-reel-${getSize().join("x")}.${ext}`;
+
+    progress.classList.remove("show");
+    const bytes = finalBlob.size;
+    const sizeStr = bytes > 1048576 ? (bytes/1048576).toFixed(1)+" MB" : (bytes/1024).toFixed(0)+" KB";
+    const loops = parseInt(loopsEl.value,10);
+    if (!expStatus.textContent.includes("non riuscita"))
+      expStatus.innerHTML = `Pronto · ${ext.toUpperCase()} · ${(onePassSeconds()*loops).toFixed(1)}s · ${sizeStr}`;
+    dlBox.classList.add("show");
+    resetExport();
+    curFrame = 0; drawFrame(0); updateReadout();
+  }
+  function resetExport(){ exportBtn.disabled = false; playBtn.disabled = false; }
+  exportBtn.addEventListener("click", exportVideo);
+
+  setCanvasSize();
+  rebuildFrames();
+})();
+</script>
+</body>
+</html>
