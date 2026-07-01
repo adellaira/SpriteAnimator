@@ -29,8 +29,10 @@
   .brand p{margin:2px 0 0;color:var(--muted);font-size:12.5px;}
   .lede{color:var(--muted);font-size:13px;max-width:340px;line-height:1.5;text-align:right;}
 
-  .layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:26px;align-items:start;}
-  @media (max-width:880px){ .layout{grid-template-columns:1fr;} }
+  .layout{display:flex;gap:26px;align-items:flex-start;}
+  .maincol{flex:1;min-width:0;display:flex;flex-direction:column;gap:20px;}
+  .layout > aside{flex:0 0 360px;}
+  @media (max-width:880px){ .layout{flex-direction:column;} .layout > aside{flex:1 1 auto;width:100%;} }
 
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;}
   .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted-2);margin:0 0 12px;}
@@ -88,28 +90,29 @@
   .count{font-family:var(--mono);font-size:11px;color:var(--muted-2);}
 
   .fgrid{display:flex;flex-wrap:wrap;gap:8px;}
-  .ftile{width:86px;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel-2);cursor:grab;position:relative;transition:outline .1s;}
+  .ftile{width:129px;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel-2);cursor:grab;position:relative;transition:outline .1s;}
   .ftile:active{cursor:grabbing;}
   .ftile.dragover{outline:2px solid var(--amber);outline-offset:1px;}
   .ftile.dragging{opacity:.4;}
-  .ftile .idx{position:absolute;top:3px;left:4px;font-family:var(--mono);font-size:10px;color:#efe7dd;background:rgba(0,0,0,.55);padding:0 5px;border-radius:5px;pointer-events:none;}
-  .ftile .pic{height:72px;
+  .ftile .idx{position:absolute;top:3px;left:4px;font-family:var(--mono);font-size:11px;color:#efe7dd;background:rgba(0,0,0,.55);padding:0 6px;border-radius:5px;pointer-events:none;}
+  .ftile .pic{height:108px;
     background-color:#2a231e;
     background-image:linear-gradient(45deg,#241f1a 25%,transparent 25%),linear-gradient(-45deg,#241f1a 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#241f1a 75%),linear-gradient(-45deg,transparent 75%,#241f1a 75%);
-    background-size:12px 12px;background-position:0 0,0 6px,6px -6px,-6px 0;
+    background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;
     display:flex;align-items:center;justify-content:center;}
   .ftile .pic img{max-width:100%;max-height:100%;display:block;}
   .ftile .fbar{display:flex;border-top:1px solid var(--line-soft);}
-  .ftile .fbar button{flex:1;background:transparent;color:var(--muted);font-size:12px;line-height:1;padding:5px 0;border-right:1px solid var(--line-soft);}
+  .ftile .fbar button{flex:1;background:transparent;color:var(--muted);font-size:13px;line-height:1;padding:7px 0;border-right:1px solid var(--line-soft);}
   .ftile .fbar button:last-child{border-right:none;}
   .ftile .fbar button:hover{background:#0e0c0a;color:var(--text);}
   .ftile .fbar button.del:hover{color:var(--rec);}
 
-  .zk-list{display:flex;flex-direction:column;gap:7px;}
-  .zk-row{display:flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:8px;padding:6px 8px;}
-  .zk-row .zkT,.zk-row .zkZ{width:60px;padding:5px 7px !important;font-size:12px !important;}
-  .zk-row span{font-size:11px;color:var(--muted-2);}
-  .zk-row .grow{flex:1;}
+  .ev-list{display:flex;flex-direction:column;gap:7px;}
+  .ev-row{display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:8px;padding:6px 8px;flex-wrap:wrap;}
+  .ev-row input[type=number]{width:58px;padding:5px 7px !important;font-size:12px !important;}
+  .ev-row input[type=color]{width:34px;height:30px;}
+  .ev-row span{font-size:11px;color:var(--muted-2);}
+  .ev-row .grow{flex:1;}
 
   .progress{height:6px;background:#0e0c0a;border-radius:99px;overflow:hidden;margin-top:12px;display:none;}
   .progress.show{display:block;}
@@ -134,6 +137,7 @@
   </header>
 
   <div class="layout">
+    <div class="maincol">
 
     <section class="panel stage-panel">
       <p class="eyebrow">Anteprima &mdash; sequenza unica</p>
@@ -157,6 +161,39 @@
       </div>
     </section>
 
+    <section class="panel stage-panel" id="zoomPanel" style="grid-column:1">
+      <p class="eyebrow">Zoom nel tempo</p>
+      <p style="font-size:12px;color:var(--muted);margin:-4px 0 12px;line-height:1.5">Ogni riga è un evento: <b style="color:var(--muted)">parte</b> a un certo secondo, <b style="color:var(--muted)">dura</b> tot secondi e porta lo zoom al valore indicato (100% = nessuno, 130% = zoom in 30%). Fuori dagli eventi il valore resta fermo.</p>
+      <canvas id="zoomCurve" height="72" style="width:100%;display:block;background:#0c0a08;border:1px solid var(--line-soft);border-radius:8px"></canvas>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted-2);margin:8px 0 10px">durata totale <b id="zkTotal" style="color:var(--muted)">0.0s</b> · adesso <span id="zkNow">0.0s</span></div>
+      <div class="ev-list" id="zkList"></div>
+      <div class="inline" style="justify-content:space-between;margin-top:10px">
+        <button class="btn ghost" id="zkAdd" style="font-size:12px;padding:7px 12px">+ Aggiungi evento zoom</button>
+        <label class="inline" style="gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="zkSmooth" checked style="accent-color:var(--amber)"> morbido
+        </label>
+      </div>
+    </section>
+
+    <section class="panel stage-panel" id="bgPanel" style="grid-column:1">
+      <p class="eyebrow">Sfondo nel tempo</p>
+      <p style="font-size:12px;color:var(--muted);margin:-4px 0 12px;line-height:1.5">Il colore di sfondo parte da quello base e cambia con gli eventi: ognuno <b style="color:var(--muted)">parte</b> a un secondo, <b style="color:var(--muted)">dura</b> tot secondi e sfuma verso il colore scelto.</p>
+      <canvas id="bgCurve" height="26" style="width:100%;display:block;border:1px solid var(--line-soft);border-radius:8px"></canvas>
+      <div class="inline" style="gap:14px;margin:10px 0;flex-wrap:wrap">
+        <label class="inline" style="gap:8px;font-size:12.5px;color:var(--muted)">colore base <input type="color" id="bgColor" value="#000000" /></label>
+        <label class="inline" style="gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="bgTransparent" style="accent-color:var(--amber)"> trasparente (se non ci sono eventi)
+        </label>
+      </div>
+      <div class="ev-list" id="bgList"></div>
+      <div class="inline" style="justify-content:space-between;margin-top:10px">
+        <button class="btn ghost" id="bgAdd" style="font-size:12px;padding:7px 12px">+ Aggiungi evento colore</button>
+        <label class="inline" style="gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="bgSmooth" checked style="accent-color:var(--amber)"> morbido
+        </label>
+      </div>
+    </section>
+
     <section class="panel stage-panel" id="framesPanel" style="grid-column:1; display:none">
       <p class="eyebrow" style="display:flex;justify-content:space-between;align-items:center">
         <span>Frame estratti <span class="count" id="frameCountLabel"></span></span>
@@ -164,6 +201,8 @@
       </p>
       <div class="fgrid" id="fgrid"></div>
     </section>
+
+    </div><!-- /maincol -->
 
     <aside>
       <section class="panel ctrl">
@@ -235,29 +274,6 @@
             <option value="fade">Dissolvenza tra tutti i frame</option>
           </select>
         </div>
-        <div class="field">
-          <label class="lbl">Sfondo</label>
-          <div class="inline">
-            <input type="color" id="bgColor" value="#000000" />
-            <label class="inline" style="gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer;">
-              <input type="checkbox" id="bgTransparent" style="accent-color:var(--amber)"> trasparente
-            </label>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel ctrl">
-        <p class="eyebrow">Zoom nel tempo</p>
-        <p style="font-size:12px;color:var(--muted);margin:-4px 0 12px;line-height:1.5">Imposta il livello di zoom in punti temporali; tra un punto e il successivo la transizione è graduale. <b style="color:var(--muted)">100%</b> = nessuno zoom, <b style="color:var(--muted)">130%</b> = zoom in 30%, <b style="color:var(--muted)">70%</b> = zoom out.</p>
-        <canvas id="zoomCurve" height="72" style="width:100%;display:block;background:#0c0a08;border:1px solid var(--line-soft);border-radius:8px"></canvas>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--muted-2);margin:8px 0 10px">durata totale <b id="zkTotal" style="color:var(--muted)">0.0s</b> · <span id="zkNow">0.0s</span></div>
-        <div class="zk-list" id="zkList"></div>
-        <div class="inline" style="justify-content:space-between;margin-top:10px">
-          <button class="btn ghost" id="zkAdd" style="font-size:12px;padding:7px 12px">+ Aggiungi punto</button>
-          <label class="inline" style="gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer">
-            <input type="checkbox" id="zkSmooth" checked style="accent-color:var(--amber)"> morbido
-          </label>
-        </div>
       </section>
 
       <section class="panel ctrl">
@@ -307,7 +323,8 @@
   let curFrame = 0, playing = false, lastTs = 0, acc = 0, rafId = null, uid = 0;
   let clockSec = 0;              // elapsed time along the whole timeline
   let refW = 1, refH = 1;        // global contain reference across all frames
-  const zk = [{ t:0, z:100 }];   // zoom keyframes {time (s), zoom (%)}
+  const zk = [];   // zoom events {start (s), dur (s), z (%)}, ramp-and-hold; base = 100%
+  const bgEv = []; // background color events {start (s), dur (s), color (hex)}, base = bgColor
 
   const $ = (id) => document.getElementById(id);
   const canvas = $("canvas"), ctx = canvas.getContext("2d");
@@ -318,6 +335,7 @@
   const framesPanel=$("framesPanel"), fgrid=$("fgrid"), frameCountLabel=$("frameCountLabel");
   const zoomCurve=$("zoomCurve"), zkTotal=$("zkTotal"), zkNow=$("zkNow"),
         zkList=$("zkList"), zkAdd=$("zkAdd"), zkSmooth=$("zkSmooth");
+  const bgCurve=$("bgCurve"), bgList=$("bgList"), bgAdd=$("bgAdd"), bgSmooth=$("bgSmooth");
   const fpsEl = $("fps"), fpsVal = $("fpsVal"), applyAll = $("applyAll");
   const sizeEl = $("size"), fitEl = $("fit"), bgColor = $("bgColor"), bgTransparent = $("bgTransparent");
   const loopsEl = $("loops"), loopsVal = $("loopsVal"), formatEl = $("format");
@@ -461,28 +479,50 @@
 
   function clearStage(){ setCanvasSize(); ctx.clearRect(0,0,canvas.width,canvas.height); }
 
-  function paintBg(){
-    if (bgTransparent.checked) ctx.clearRect(0,0,canvas.width,canvas.height);
-    else { ctx.fillStyle = bgColor.value; ctx.fillRect(0,0,canvas.width,canvas.height); }
+  // generic ramp-and-hold evaluator: events {start,dur, val}, lerp(from,to,u)
+  function rampValue(events, t, base, lerp, smooth){
+    const a = [...events].sort((x,y)=>x.start-y.start);
+    let cur = base;
+    for (const ev of a){
+      if (t < ev.start) return cur;
+      if (t < ev.start + ev.dur){
+        let u = ev.dur > 0 ? (t - ev.start)/ev.dur : 1;
+        if (smooth) u = u*u*(3-2*u);
+        return lerp(cur, ev.val, u);
+      }
+      cur = ev.val;
+    }
+    return cur;
   }
-
-  function totalDur(){ return onePassSeconds() * parseInt(loopsEl.value,10); }
+  const lerpNum = (a,b,u) => a + (b-a)*u;
+  function hexToRgb(h){ h=h.replace('#',''); if(h.length===3) h=h.split('').map(c=>c+c).join(''); const n=parseInt(h,16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+  const rgbToCss = (r) => `rgb(${Math.round(r[0])},${Math.round(r[1])},${Math.round(r[2])})`;
+  function lerpColor(a,b,u){ const ca=hexToRgb(a), cb=hexToRgb(b); return [lerpNum(ca[0],cb[0],u),lerpNum(ca[1],cb[1],u),lerpNum(ca[2],cb[2],u)]; }
 
   function zoomPercentAt(t){
     if (!zk.length) return 100;
-    const a = [...zk].sort((x,y)=>x.t-y.t);
-    if (t <= a[0].t) return a[0].z;
-    if (t >= a[a.length-1].t) return a[a.length-1].z;
-    for (let i=0;i<a.length-1;i++){
-      if (t >= a[i].t && t <= a[i+1].t){
-        const span = a[i+1].t - a[i].t;
-        let u = span > 0 ? (t - a[i].t)/span : 0;
-        if (zkSmooth.checked) u = u*u*(3-2*u);
-        return a[i].z + (a[i+1].z - a[i].z)*u;
-      }
-    }
-    return a[a.length-1].z;
+    return rampValue(zk.map(e=>({start:e.start,dur:e.dur,val:e.z})), t, 100, lerpNum, zkSmooth.checked);
   }
+
+  function paintBg(){
+    if (bgEv.length){ ctx.fillStyle = bgColorSolidAt(clockSec); ctx.fillRect(0,0,canvas.width,canvas.height); return; }
+    if (bgTransparent.checked) ctx.clearRect(0,0,canvas.width,canvas.height);
+    else { ctx.fillStyle = bgColor.value; ctx.fillRect(0,0,canvas.width,canvas.height); }
+  }
+  // robust color evaluator returning css rgb, base + events all as hex
+  function bgColorSolidAt(t){
+    const a=[...bgEv].sort((x,y)=>x.start-y.start);
+    let cur=bgColor.value;                 // hex string
+    for (const ev of a){
+      if (t < ev.start) return cssHex(cur);
+      if (t < ev.start+ev.dur){ let u=ev.dur>0?(t-ev.start)/ev.dur:1; if(bgSmooth.checked)u=u*u*(3-2*u); return rgbToCss(lerpColor(cur, ev.color, u)); }
+      cur=ev.color;
+    }
+    return cssHex(cur);
+  }
+  const cssHex = (h) => rgbToCss(hexToRgb(h));
+
+  function totalDur(){ return onePassSeconds() * parseInt(loopsEl.value,10); }
 
   function drawOne(i, alpha){
     const f = frames[i]; if (!f) return;
@@ -671,7 +711,7 @@
     const tot = totalDur();
     clockSec += dt/1000;
     if (tot > 0 && clockSec >= tot) clockSec %= tot;
-    render(); updateReadout(); drawCurve();
+    render(); updateReadout(); drawCurve(); drawBgCurve();
     rafId = requestAnimationFrame(loop);
   }
   function play(){ if(!frames.length) return; playing=true; lastTs=0; playLabel.textContent="Pausa"; playBtn.querySelector("path").setAttribute("d","M4 3h3v10H4zM9 3h3v10H9z"); rafId=requestAnimationFrame(loop); }
@@ -751,8 +791,7 @@
   loopsEl.addEventListener("input", () => { loopsVal.textContent = loopsEl.value; updateZoomMeta(); });
   sizeEl.addEventListener("change", () => { setCanvasSize(); drawFrame(curFrame); });
   fitEl.addEventListener("change", () => drawFrame(curFrame));
-  bgColor.addEventListener("input", () => drawFrame(curFrame));
-  bgTransparent.addEventListener("change", () => drawFrame(curFrame));
+  // (bg color/transparent live updates are wired in the background-events editor below)
   trimEnabled.addEventListener("change", () => { trimTolField.style.opacity = trimEnabled.checked ? "1" : ".4"; methodField.style.opacity = trimEnabled.checked ? "1" : ".4"; rebuildFrames(); });
   trimTol.addEventListener("input", () => { trimTolVal.textContent = trimTol.value; });
   trimTol.addEventListener("change", () => { invalidateProc(); rebuildFrames(); });
@@ -777,38 +816,70 @@
   function updateZoomMeta(){
     const tot = totalDur();
     zkTotal.textContent = tot.toFixed(1) + "s";
-    drawCurve();
+    drawCurve(); drawBgCurve();
   }
+
+  // ---- zoom events editor ----
   function renderZkList(){
-    zk.sort((a,b)=>a.t-b.t);
     zkList.innerHTML = zk.map((k,i) => `
-      <div class="zk-row">
-        <input type="number" class="zkT" data-i="${i}" min="0" step="0.1" value="${+k.t.toFixed(2)}"><span>s</span>
-        <input type="number" class="zkZ" data-i="${i}" min="30" max="400" step="5" value="${Math.round(k.z)}"><span>%</span>
+      <div class="ev-row">
+        <span>parte a</span><input type="number" class="zkS" data-i="${i}" min="0" step="0.5" value="${+k.start.toFixed(2)}"><span>s</span>
+        <span>dura</span><input type="number" class="zkD" data-i="${i}" min="0" step="0.5" value="${+k.dur.toFixed(2)}"><span>s</span>
+        <span>zoom</span><input type="number" class="zkZ" data-i="${i}" min="30" max="400" step="5" value="${Math.round(k.z)}"><span>%</span>
         <span class="grow"></span>
-        <button class="minibtn del zkDel" data-i="${i}" title="Rimuovi" ${zk.length<=1?"disabled style=opacity:.3":""}>✕</button>
-      </div>`).join("");
+        <button class="minibtn del zkDel" data-i="${i}" title="Rimuovi">✕</button>
+      </div>`).join("") || `<p style="font-size:12px;color:var(--muted-2)">Nessun evento: zoom fisso al 100%.</p>`;
     updateZoomMeta();
   }
   zkList.addEventListener("input", (e) => {
     const t = e.target, i = +t.dataset.i; if (!zk[i]) return;
-    if (t.classList.contains("zkT")) zk[i].t = Math.max(0, parseFloat(t.value) || 0);
+    if (t.classList.contains("zkS")) zk[i].start = Math.max(0, parseFloat(t.value) || 0);
+    else if (t.classList.contains("zkD")) zk[i].dur = Math.max(0, parseFloat(t.value) || 0);
     else if (t.classList.contains("zkZ")) zk[i].z = Math.max(30, Math.min(400, parseFloat(t.value) || 100));
-    drawFrame(curFrame); updateZoomMeta();   // live, without rebuilding inputs (keeps focus)
+    render(); updateZoomMeta();
   });
-  zkList.addEventListener("change", () => renderZkList()); // re-sort/re-index once editing ends
   zkList.addEventListener("click", (e) => {
     const btn = e.target.closest(".zkDel"); if (!btn) return;
-    const i = +btn.dataset.i;
-    if (zk.length > 1){ zk.splice(i,1); renderZkList(); drawFrame(curFrame); }
+    zk.splice(+btn.dataset.i, 1); renderZkList(); render();
   });
   zkAdd.addEventListener("click", () => {
-    const tot = totalDur() || (zk.length ? zk[zk.length-1].t + 1 : 1);
-    const lastT = zk.length ? Math.max(...zk.map(k=>k.t)) : 0;
-    zk.push({ t: Math.min(tot, +(lastT + 1).toFixed(2)), z: 100 });
-    renderZkList();
+    const lastEnd = zk.length ? Math.max(...zk.map(k=>k.start+k.dur)) : 0;
+    zk.push({ start:+lastEnd.toFixed(2), dur:2, z:130 });
+    renderZkList(); render();
   });
-  zkSmooth.addEventListener("change", () => { drawFrame(curFrame); drawCurve(); });
+  zkSmooth.addEventListener("change", () => { render(); drawCurve(); });
+
+  // ---- background color events editor ----
+  function renderBgList(){
+    bgList.innerHTML = bgEv.map((k,i) => `
+      <div class="ev-row">
+        <span>parte a</span><input type="number" class="bgS" data-i="${i}" min="0" step="0.5" value="${+k.start.toFixed(2)}"><span>s</span>
+        <span>dura</span><input type="number" class="bgD" data-i="${i}" min="0" step="0.5" value="${+k.dur.toFixed(2)}"><span>s</span>
+        <span>verso</span><input type="color" class="bgC" data-i="${i}" value="${k.color}">
+        <span class="grow"></span>
+        <button class="minibtn del bgDel" data-i="${i}" title="Rimuovi">✕</button>
+      </div>`).join("") || `<p style="font-size:12px;color:var(--muted-2)">Nessun evento: sfondo fisso.</p>`;
+    drawBgCurve();
+  }
+  bgList.addEventListener("input", (e) => {
+    const t = e.target, i = +t.dataset.i; if (!bgEv[i]) return;
+    if (t.classList.contains("bgS")) bgEv[i].start = Math.max(0, parseFloat(t.value) || 0);
+    else if (t.classList.contains("bgD")) bgEv[i].dur = Math.max(0, parseFloat(t.value) || 0);
+    else if (t.classList.contains("bgC")) bgEv[i].color = t.value;
+    render(); drawBgCurve();
+  });
+  bgList.addEventListener("click", (e) => {
+    const btn = e.target.closest(".bgDel"); if (!btn) return;
+    bgEv.splice(+btn.dataset.i, 1); renderBgList(); render();
+  });
+  bgAdd.addEventListener("click", () => {
+    const lastEnd = bgEv.length ? Math.max(...bgEv.map(k=>k.start+k.dur)) : 0;
+    bgEv.push({ start:+lastEnd.toFixed(2), dur:2, color:"#f0a83c" });
+    renderBgList(); render();
+  });
+  bgSmooth.addEventListener("change", () => { render(); drawBgCurve(); });
+  bgColor.addEventListener("input", () => { render(); drawBgCurve(); });
+  bgTransparent.addEventListener("change", () => render());
 
   function drawCurve(){
     const c = zoomCurve.getContext("2d");
@@ -816,28 +887,39 @@
     const H = zoomCurve.height;
     c.clearRect(0,0,W,H);
     const tot = totalDur();
-    const zs = zk.map(k=>k.z).concat([100]);
+    const zs = zk.flatMap(k=>[k.z]).concat([100]);
     const zmin = Math.min(...zs) - 12, zmax = Math.max(...zs) + 12;
     const yOf = (z) => H - ((z - zmin)/(zmax - zmin))*(H-10) - 5;
     const xOf = (t) => tot>0 ? (t/tot)*W : 0;
-    // 100% baseline
     c.strokeStyle = "#3a322b"; c.setLineDash([3,4]); c.lineWidth = 1;
     c.beginPath(); c.moveTo(0, yOf(100)); c.lineTo(W, yOf(100)); c.stroke(); c.setLineDash([]);
     if (tot > 0){
-      // curve
       c.strokeStyle = "#f0a83c"; c.lineWidth = 2; c.beginPath();
       for (let x=0;x<=W;x+=2){ const t=(x/W)*tot, y=yOf(zoomPercentAt(t)); x===0?c.moveTo(x,y):c.lineTo(x,y); }
       c.stroke();
-      // keyframe dots
       c.fillStyle = "#efe7dd";
-      for (const k of zk){ c.beginPath(); c.arc(xOf(k.t), yOf(k.z), 3.2, 0, Math.PI*2); c.fill(); }
-      // playhead
+      for (const k of zk){ c.beginPath(); c.arc(xOf(k.start), yOf(k.z), 3, 0, Math.PI*2); c.fill(); c.beginPath(); c.arc(xOf(k.start+k.dur), yOf(k.z), 3, 0, Math.PI*2); c.fill(); }
       const px = xOf(Math.min(clockSec, tot));
       c.strokeStyle = "#e5564b"; c.lineWidth = 1.5;
       c.beginPath(); c.moveTo(px, 0); c.lineTo(px, H); c.stroke();
     }
   }
-  window.addEventListener("resize", drawCurve);
+  function drawBgCurve(){
+    const c = bgCurve.getContext("2d");
+    const W = bgCurve.width = bgCurve.clientWidth || 300;
+    const H = bgCurve.height;
+    const tot = totalDur();
+    if (tot <= 0){ c.clearRect(0,0,W,H); return; }
+    for (let x=0;x<W;x++){
+      const t=(x/W)*tot;
+      c.fillStyle = bgEv.length ? bgColorSolidAt(t) : (bgTransparent.checked ? "#141110" : cssHex(bgColor.value));
+      c.fillRect(x,0,1,H);
+    }
+    const px = Math.min(clockSec,tot)/tot*W;
+    c.strokeStyle = "#e5564b"; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(px,0); c.lineTo(px,H); c.stroke();
+  }
+  window.addEventListener("resize", () => { drawCurve(); drawBgCurve(); });
 
   // ---- export ----
   const pickFrom = (list) => list.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
@@ -946,6 +1028,7 @@
 
   setCanvasSize();
   renderZkList();
+  renderBgList();
   rebuildFrames();
 })();
 </script>
