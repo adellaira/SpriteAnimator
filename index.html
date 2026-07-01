@@ -637,14 +637,17 @@
   function detectSprites(id, w, h){
     const d=id.data;
     const ink=(x,y)=> d[(y*w+x)*4+3] > 0;
+    const emptyFrac = 0.01;   // a row/column counts as "content" only above ~1% coverage (ignores speckles)
+    const minGapV=Math.max(2, Math.round(h*0.003)), minSzV=Math.max(3, Math.round(h*0.02));
+    const minGapH=Math.max(2, Math.round(w*0.003)), minSzH=Math.max(3, Math.round(w*0.02));
+    // row coverage
     const rowHas=new Uint8Array(h);
-    for (let y=0;y<h;y++){ for (let x=0;x<w;x++){ if (ink(x,y)){ rowHas[y]=1; break; } } }
-    const minGapV=Math.max(2, Math.round(h*0.012)), minSzV=Math.max(3, Math.round(h*0.02));
-    const minGapH=Math.max(2, Math.round(w*0.012)), minSzH=Math.max(3, Math.round(w*0.02));
+    for (let y=0;y<h;y++){ let c=0; for (let x=0;x<w;x++) if (ink(x,y)) c++; rowHas[y] = c > w*emptyFrac ? 1 : 0; }
     const boxes=[];
     for (const rb of bands(rowHas, h, minGapV, minSzV)){
+      const bandH = rb.b - rb.a + 1;
       const colHas=new Uint8Array(w);
-      for (let x=0;x<w;x++){ for (let y=rb.a;y<=rb.b;y++){ if (ink(x,y)){ colHas[x]=1; break; } } }
+      for (let x=0;x<w;x++){ let c=0; for (let y=rb.a;y<=rb.b;y++) if (ink(x,y)) c++; colHas[x] = c > bandH*emptyFrac ? 1 : 0; }
       for (const cb of bands(colHas, w, minGapH, minSzH)){
         let minx=cb.b, maxx=cb.a, miny=rb.b, maxy=rb.a;
         for (let y=rb.a;y<=rb.b;y++) for (let x=cb.a;x<=cb.b;x++){
