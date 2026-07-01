@@ -151,6 +151,22 @@
       </section>
 
       <section class="panel ctrl">
+        <p class="eyebrow">Ritaglio &amp; centratura</p>
+        <label class="inline" style="gap:9px;font-size:13px;cursor:pointer;margin-bottom:12px">
+          <input type="checkbox" id="trimEnabled" checked style="accent-color:var(--amber)">
+          Estrai lo sprite dallo sfondo bianco e centralo
+        </label>
+        <div class="field" id="trimTolField">
+          <label class="lbl" for="trimTol">Tolleranza del bianco</label>
+          <div class="rangewrap">
+            <input type="range" id="trimTol" min="0" max="80" step="2" value="24" />
+            <span class="val"><span id="trimTolVal">24</span></span>
+          </div>
+          <p style="font-size:11.5px;color:var(--muted-2);margin:8px 0 0;line-height:1.5">Più alta = rimuove tonalità di bianco più &ldquo;sporche&rdquo;. Il bianco all'interno dello sprite resta (viene tolto solo quello collegato ai bordi).</p>
+        </div>
+      </section>
+
+      <section class="panel ctrl">
         <p class="eyebrow">Velocità & formato</p>
         <div class="field">
           <label class="lbl" for="fps">Velocità predefinita (per i nuovi sheet)</label>
@@ -253,6 +269,7 @@
   const canvas = $("canvas"), ctx = canvas.getContext("2d");
   const stage = $("stage"), emptyState = $("emptyState");
   const sheetList = $("sheetList"), fileInput = $("fileInput"), drop = $("drop");
+  const trimEnabled=$("trimEnabled"), trimTol=$("trimTol"), trimTolVal=$("trimTolVal"), trimTolField=$("trimTolField");
   const zoomCurve=$("zoomCurve"), zkTotal=$("zkTotal"), zkNow=$("zkNow"),
         zkList=$("zkList"), zkAdd=$("zkAdd"), zkSmooth=$("zkSmooth");
   const fpsEl = $("fps"), fpsVal = $("fpsVal"), applyAll = $("applyAll");
@@ -275,14 +292,22 @@
 
   function rebuildFrames(){
     frames = [];
+    const trim = trimEnabled.checked;
+    const tol = parseInt(trimTol.value, 10);
     for (const s of sheets){
       const cols = Math.max(1, s.cols || 8);
       const rows = Math.max(1, s.rows || 1);
       const fps = Math.max(1, s.fps || 12);
-      const fw = s.img.naturalWidth / cols, fh = s.img.naturalHeight / rows;
-      for (let r=0;r<rows;r++)
-        for (let cIdx=0;cIdx<cols;cIdx++)
-          frames.push({ img:s.img, sx:cIdx*fw, sy:r*fh, sw:fw, sh:fh, fps, dur:1000/fps });
+      if (trim){
+        ensureProcessed(s, tol);
+        for (let idx=0; idx<cols*rows; idx++)
+          frames.push({ proc:s.proc[idx], fps, dur:1000/fps });
+      } else {
+        const fw = s.img.naturalWidth / cols, fh = s.img.naturalHeight / rows;
+        for (let r=0;r<rows;r++)
+          for (let cIdx=0;cIdx<cols;cIdx++)
+            frames.push({ img:s.img, sx:cIdx*fw, sy:r*fh, sw:fw, sh:fh, fps, dur:1000/fps });
+      }
     }
     if (curFrame >= frames.length) curFrame = 0;
     const has = frames.length > 0;
@@ -325,13 +350,72 @@
     if (!f){ clearStage(); return; }
     paintBg();
     const cw = canvas.width, ch = canvas.height, mode = fitEl.value;
-    const fit = mode === "cover" ? Math.max(cw/f.sw, ch/f.sh) : Math.min(cw/f.sw, ch/f.sh);
-    const scale = fit * (zoomPercentAt(clockSec) / 100);
-    const dw = f.sw*scale, dh = f.sh*scale, dx = (cw-dw)/2, dy = (ch-dh)/2;
+    const zoom = zoomPercentAt(clockSec) / 100;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, dx, dy, dw, dh);
+    if (f.proc){
+      const p = f.proc;
+      // scale based on the whole cell (uniform across frames), content centered
+      const fit = mode === "cover" ? Math.max(cw/p.cellW, ch/p.cellH) : Math.min(cw/p.cellW, ch/p.cellH);
+      const scale = fit * zoom;
+      const dw = p.canvas.width*scale, dh = p.canvas.height*scale;
+      ctx.drawImage(p.canvas, (cw-dw)/2, (ch-dh)/2, dw, dh);
+    } else {
+      const fit = mode === "cover" ? Math.max(cw/f.sw, ch/f.sh) : Math.min(cw/f.sw, ch/f.sh);
+      const scale = fit * zoom;
+      const dw = f.sw*scale, dh = f.sh*scale;
+      ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, (cw-dw)/2, (ch-dh)/2, dw, dh);
+    }
   }
+
+  // ---- white-background removal + trim (per cell) ----
+  function trimAndKey(imageData, w, h, tol){
+    const d = imageData.data;
+    const isBg = (p) => { const a=d[p*4+3]; if (a===0) return true;
+      return d[p*4] >= 255-tol && d[p*4+1] >= 255-tol && d[p*4+2] >= 255-tol; };
+    const visited = new Uint8Array(w*h);
+    const stack = [];
+    const seed = (x,y) => { if (x<0||y<0||x>=w||y>=h) return; const p=y*w+x;
+      if (!visited[p] && isBg(p)){ visited[p]=1; stack.push(p); } };
+    for (let x=0;x<w;x++){ seed(x,0); seed(x,h-1); }
+    for (let y=0;y<h;y++){ seed(0,y); seed(w-1,y); }
+    while (stack.length){
+      const p = stack.pop(); const x = p%w, y = (p/w)|0;
+      d[p*4+3] = 0;                        // background -> transparent
+      seed(x+1,y); seed(x-1,y); seed(x,y+1); seed(x,y-1);
+    }
+    let minx=w, miny=h, maxx=-1, maxy=-1;
+    for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+      if (d[(y*w+x)*4+3] > 0){ if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y; }
+    }
+    if (maxx < 0) return null;
+    return { x:minx, y:miny, w:maxx-minx+1, h:maxy-miny+1 };
+  }
+
+  function processSheet(s, tol){
+    const cols=s.cols, rows=s.rows;
+    const iw=s.img.naturalWidth, ih=s.img.naturalHeight;
+    const cw=Math.floor(iw/cols), ch=Math.floor(ih/rows);
+    const off=document.createElement("canvas"); off.width=iw; off.height=ih;
+    const octx=off.getContext("2d", { willReadFrequently:true });
+    octx.drawImage(s.img, 0, 0);
+    const proc=[];
+    for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){
+      const sx=c*cw, sy=r*ch;
+      const id=octx.getImageData(sx, sy, cw, ch);
+      const box=trimAndKey(id, cw, ch, tol);
+      const cv=document.createElement("canvas");
+      if (!box){ cv.width=1; cv.height=1; proc.push({ canvas:cv, cellW:cw, cellH:ch }); continue; }
+      const tmp=document.createElement("canvas"); tmp.width=cw; tmp.height=ch;
+      tmp.getContext("2d").putImageData(id, 0, 0);
+      cv.width=box.w; cv.height=box.h;
+      cv.getContext("2d").drawImage(tmp, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+      proc.push({ canvas:cv, cellW:cw, cellH:ch });
+    }
+    s.proc=proc; s.procTol=tol;
+  }
+  function ensureProcessed(s, tol){ if (!(s.proc && s.procTol===tol)) processSheet(s, tol); }
+  function invalidateProc(){ sheets.forEach(s => { s.proc=null; s.procTol=null; }); }
 
   function onePassSeconds(){ return frames.reduce((a,f)=>a + 1/f.fps, 0); }
 
@@ -438,6 +522,9 @@
   fitEl.addEventListener("change", () => drawFrame(curFrame));
   bgColor.addEventListener("input", () => drawFrame(curFrame));
   bgTransparent.addEventListener("change", () => drawFrame(curFrame));
+  trimEnabled.addEventListener("change", () => { trimTolField.style.opacity = trimEnabled.checked ? "1" : ".4"; rebuildFrames(); });
+  trimTol.addEventListener("input", () => { trimTolVal.textContent = trimTol.value; });
+  trimTol.addEventListener("change", () => { invalidateProc(); rebuildFrames(); });
   playBtn.addEventListener("click", toggle);
   restartBtn.addEventListener("click", () => { curFrame=0; acc=0; lastTs=0; clockSec=0; drawFrame(0); updateReadout(); drawCurve(); });
   document.addEventListener("keydown", (e) => {
