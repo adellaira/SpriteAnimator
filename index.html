@@ -87,6 +87,24 @@
   .drop b{color:var(--amber);}
   .count{font-family:var(--mono);font-size:11px;color:var(--muted-2);}
 
+  .fgrid{display:flex;flex-wrap:wrap;gap:8px;}
+  .ftile{width:86px;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel-2);cursor:grab;position:relative;transition:outline .1s;}
+  .ftile:active{cursor:grabbing;}
+  .ftile.dragover{outline:2px solid var(--amber);outline-offset:1px;}
+  .ftile.dragging{opacity:.4;}
+  .ftile .idx{position:absolute;top:3px;left:4px;font-family:var(--mono);font-size:10px;color:#efe7dd;background:rgba(0,0,0,.55);padding:0 5px;border-radius:5px;pointer-events:none;}
+  .ftile .pic{height:72px;
+    background-color:#2a231e;
+    background-image:linear-gradient(45deg,#241f1a 25%,transparent 25%),linear-gradient(-45deg,#241f1a 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#241f1a 75%),linear-gradient(-45deg,transparent 75%,#241f1a 75%);
+    background-size:12px 12px;background-position:0 0,0 6px,6px -6px,-6px 0;
+    display:flex;align-items:center;justify-content:center;}
+  .ftile .pic img{max-width:100%;max-height:100%;display:block;}
+  .ftile .fbar{display:flex;border-top:1px solid var(--line-soft);}
+  .ftile .fbar button{flex:1;background:transparent;color:var(--muted);font-size:12px;line-height:1;padding:5px 0;border-right:1px solid var(--line-soft);}
+  .ftile .fbar button:last-child{border-right:none;}
+  .ftile .fbar button:hover{background:#0e0c0a;color:var(--text);}
+  .ftile .fbar button.del:hover{color:var(--rec);}
+
   .zk-list{display:flex;flex-direction:column;gap:7px;}
   .zk-row{display:flex;align-items:center;gap:7px;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:8px;padding:6px 8px;}
   .zk-row .zkT,.zk-row .zkZ{width:60px;padding:5px 7px !important;font-size:12px !important;}
@@ -137,6 +155,14 @@
           <span><b id="rDur">0.0</b>s</span>
         </div>
       </div>
+    </section>
+
+    <section class="panel stage-panel" id="framesPanel" style="grid-column:1; display:none">
+      <p class="eyebrow" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Frame estratti <span class="count" id="frameCountLabel"></span></span>
+        <span style="font-family:var(--sans);text-transform:none;letter-spacing:0;color:var(--muted-2);font-size:11px">trascina per riordinare</span>
+      </p>
+      <div class="fgrid" id="fgrid"></div>
     </section>
 
     <aside>
@@ -288,6 +314,7 @@
   const sheetList = $("sheetList"), fileInput = $("fileInput"), drop = $("drop");
   const trimEnabled=$("trimEnabled"), trimTol=$("trimTol"), trimTolVal=$("trimTolVal"), trimTolField=$("trimTolField");
   const methodEl=$("method"), methodField=$("methodField"), extractStatus=$("extractStatus"), transEl=$("trans");
+  const framesPanel=$("framesPanel"), fgrid=$("fgrid"), frameCountLabel=$("frameCountLabel");
   const zoomCurve=$("zoomCurve"), zkTotal=$("zkTotal"), zkNow=$("zkNow"),
         zkList=$("zkList"), zkAdd=$("zkAdd"), zkSmooth=$("zkSmooth");
   const fpsEl = $("fps"), fpsVal = $("fpsVal"), applyAll = $("applyAll");
@@ -308,6 +335,18 @@
     if (canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; }
   }
 
+  function thumbFor(f){
+    if (f.proc){
+      if (!f.proc.url) f.proc.url = f.proc.canvas.width>1 ? f.proc.canvas.toDataURL() : "";
+      return f.proc.url;
+    }
+    const maxD=120, sc=Math.min(1, maxD/Math.max(f.sw,f.sh));
+    const t=document.createElement("canvas"); t.width=Math.max(1,f.sw*sc); t.height=Math.max(1,f.sh*sc);
+    t.getContext("2d").drawImage(f.img, f.sx, f.sy, f.sw, f.sh, 0, 0, t.width, t.height);
+    return t.toDataURL();
+  }
+
+  // (re)build the frame list from the sheets — resets manual grid edits
   function rebuildFrames(){
     frames = [];
     const trim = trimEnabled.checked;
@@ -317,24 +356,25 @@
       const cols = Math.max(1, s.cols || 8);
       const rows = Math.max(1, s.rows || 1);
       const fps = Math.max(1, s.fps || 12);
-      const startLen = frames.length;
       if (trim){
         ensureProcessed(s, tol, method);
         for (let idx=0; idx<s.proc.length; idx++)
-          frames.push({ proc:s.proc[idx], fps, dur:1000/fps });
+          frames.push({ id:++uid, sheetId:s.id, proc:s.proc[idx], fps, dur:1000/fps });
       } else {
         const fw = s.img.naturalWidth / cols, fh = s.img.naturalHeight / rows;
         for (let r=0;r<rows;r++)
           for (let cIdx=0;cIdx<cols;cIdx++)
-            frames.push({ img:s.img, sx:cIdx*fw, sy:r*fh, sw:fw, sh:fh, fps, dur:1000/fps });
-      }
-      // mark sheet boundaries for the transition option
-      if (frames.length > startLen){
-        frames[startLen].sheetFirst = true;
-        frames[frames.length-1].sheetLast = true;
+            frames.push({ id:++uid, sheetId:s.id, img:s.img, sx:cIdx*fw, sy:r*fh, sw:fw, sh:fh, fps, dur:1000/fps });
       }
     }
-    // cumulative start time (seconds) of each frame within one pass
+    frames.forEach(f => f.thumb = thumbFor(f));
+    recompute();
+    renderGrid();
+  }
+
+  // recompute derived data (durations, timeline) and refresh preview — keeps edits
+  function recompute(){
+    frames.forEach(f => f.dur = 1000/f.fps);
     frameStarts = []; let acc2 = 0;
     for (const f of frames){ frameStarts.push(acc2); acc2 += f.dur/1000; }
     if (curFrame >= frames.length) curFrame = 0;
@@ -347,6 +387,67 @@
     updateZoomMeta();
     updateExtractStatus();
   }
+
+  // sync each frame's fps from its owning sheet (fps change without re-extraction)
+  function syncFps(){
+    frames.forEach(f => { const s = sheets.find(x => x.id === f.sheetId); if (s) f.fps = Math.max(1, s.fps||12); });
+    recompute();
+  }
+
+  // ---- extracted-frames grid (reorder / duplicate / delete) ----
+  function renderGrid(){
+    framesPanel.style.display = frames.length ? "" : "none";
+    frameCountLabel.textContent = `(${frames.length})`;
+    fgrid.innerHTML = frames.map((f,i) => `
+      <div class="ftile" draggable="true" data-i="${i}">
+        <span class="idx">${i+1}</span>
+        <div class="pic">${f.thumb ? `<img src="${f.thumb}" draggable="false" alt="frame ${i+1}">` : ""}</div>
+        <div class="fbar">
+          <button class="mv" data-i="${i}" data-d="-1" title="Sposta a sinistra">◀</button>
+          <button class="dup" data-i="${i}" title="Duplica">⧉</button>
+          <button class="del" data-i="${i}" title="Elimina">✕</button>
+          <button class="mv" data-i="${i}" data-d="1" title="Sposta a destra">▶</button>
+        </div>
+      </div>`).join("");
+  }
+  function afterEdit(){ recompute(); renderGrid(); }
+  function moveFrame(i, d){ const j=i+d; if (j<0||j>=frames.length) return; const [x]=frames.splice(i,1); frames.splice(j,0,x); afterEdit(); }
+  function dupFrame(i){ const f=frames[i]; frames.splice(i+1,0,{ ...f, id:++uid }); afterEdit(); }
+  function delFrame(i){ frames.splice(i,1); afterEdit(); }
+
+  fgrid.addEventListener("click", (e) => {
+    const btn = e.target.closest("button"); if (!btn) return;
+    const i = +btn.dataset.i;
+    if (btn.classList.contains("mv")) moveFrame(i, +btn.dataset.d);
+    else if (btn.classList.contains("dup")) dupFrame(i);
+    else if (btn.classList.contains("del")) delFrame(i);
+  });
+  let dragI = -1;
+  fgrid.addEventListener("dragstart", (e) => {
+    const tile = e.target.closest(".ftile"); if (!tile) return;
+    dragI = +tile.dataset.i; tile.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+  });
+  fgrid.addEventListener("dragend", (e) => {
+    const tile = e.target.closest(".ftile"); if (tile) tile.classList.remove("dragging");
+    fgrid.querySelectorAll(".dragover").forEach(t => t.classList.remove("dragover"));
+    dragI = -1;
+  });
+  fgrid.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    const tile = e.target.closest(".ftile"); if (!tile) return;
+    fgrid.querySelectorAll(".dragover").forEach(t => t.classList.remove("dragover"));
+    tile.classList.add("dragover");
+  });
+  fgrid.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const tile = e.target.closest(".ftile"); if (!tile || dragI < 0) return;
+    let target = +tile.dataset.i;
+    const [x] = frames.splice(dragI, 1);
+    if (target > dragI) target--;                 // account for the removed item
+    frames.splice(target, 0, x);
+    dragI = -1; afterEdit();
+  });
 
   function clearStage(){ setCanvasSize(); ctx.clearRect(0,0,canvas.width,canvas.height); }
 
@@ -416,7 +517,7 @@
     curFrame = i;
     const mode = transEl.value;
     const next = (i+1) % frames.length;
-    const boundary = frames[i].sheetLast && frames[next].sheetFirst;
+    const boundary = frames[i].sheetId !== frames[next].sheetId;
     if (mode === "fade" && frames.length > 1){
       drawOne(i, 1-frac); drawOne(next, frac);
     } else if (mode === "fadeSheet" && frames.length > 1 && boundary){
@@ -602,7 +703,7 @@
     if (!t.classList.contains("metaInput")) return;
     const s = sheets.find(x => x.id == t.dataset.id); if (!s) return;
     s.fps = Math.max(1, parseInt(t.value,10) || 1);
-    rebuildFrames();
+    syncFps();
   }
   sheetList.addEventListener("input", onSheetParam);
   sheetList.addEventListener("change", onSheetParam);
@@ -636,7 +737,7 @@
   stage.addEventListener("drop", e => addFiles(e.dataTransfer.files));
 
   fpsEl.addEventListener("input", () => { fpsVal.textContent = fpsEl.value; });
-  applyAll.addEventListener("click", () => { const v=getDefFps(); sheets.forEach(s=>s.fps=v); renderSheetList(); rebuildFrames(); });
+  applyAll.addEventListener("click", () => { const v=getDefFps(); sheets.forEach(s=>s.fps=v); renderSheetList(); syncFps(); });
   loopsEl.addEventListener("input", () => { loopsVal.textContent = loopsEl.value; updateZoomMeta(); });
   sizeEl.addEventListener("change", () => { setCanvasSize(); drawFrame(curFrame); });
   fitEl.addEventListener("change", () => drawFrame(curFrame));
