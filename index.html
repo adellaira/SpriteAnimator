@@ -119,6 +119,8 @@
   .ftile .zoomf:hover{background:var(--amber);color:#241500;opacity:1;}
   .ftile .zoomf.zout{left:3px;}
   .ftile .zoomf.zin{right:3px;}
+  .ftile .finfo{font-family:var(--mono);font-size:10px;color:var(--muted-2);text-align:center;padding:3px 3px 1px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid var(--line-soft);}
+  .ftile.nudged .finfo{color:var(--amber);}
   .ftile .fbar{display:flex;border-top:1px solid var(--line-soft);}
   .ftile .fbar button{flex:1;background:transparent;color:var(--muted);font-size:13px;line-height:1;padding:7px 0;border-right:1px solid var(--line-soft);}
   .ftile .fbar button:last-child{border-right:none;}
@@ -459,6 +461,7 @@
           <button class="zoomf zout" data-i="${i}" data-dir="-1" title="Rimpicciolisci">−</button>
           <button class="zoomf zin"  data-i="${i}" data-dir="1"  title="Ingrandisci">+</button>
         </div>
+        <div class="finfo">${fmtAdjust(f)}</div>
         <div class="fbar">
           <button class="mv" data-i="${i}" data-d="-1" title="Sposta prima">«</button>
           <button class="dup" data-i="${i}" title="Duplica">⧉</button>
@@ -474,7 +477,19 @@
   const NUDGE = 0.01; // 1% of the canvas per click (1%, 2%, 3%, …)
   const ZSTEP = 0.05; // per-frame scale step
   const isAdjusted = (f) => (f.ox||0)!==0 || (f.oy||0)!==0 || (f.scale||1)!==1;
-  function markTile(i, f){ const tile = fgrid.querySelector(`.ftile[data-i="${i}"]`); if (tile) tile.classList.toggle("nudged", isAdjusted(f)); }
+  function fmtAdjust(f){
+    const ox=Math.round((f.ox||0)*100), oy=Math.round((f.oy||0)*100), sc=Math.round((f.scale||1)*100);
+    const parts=[];
+    if (ox) parts.push(`x${ox>0?'+':''}${ox}%`);
+    if (oy) parts.push(`y${oy>0?'+':''}${oy}%`);
+    if (sc!==100) parts.push(`⤢${sc}%`);
+    return parts.length ? parts.join("  ") : "centrato";
+  }
+  function markTile(i, f){
+    const tile = fgrid.querySelector(`.ftile[data-i="${i}"]`); if (!tile) return;
+    tile.classList.toggle("nudged", isAdjusted(f));
+    const fi = tile.querySelector(".finfo"); if (fi) fi.textContent = fmtAdjust(f);
+  }
   function previewFrame(i){ if (!playing && frameStarts[i] != null){ clockSec = frameStarts[i] + 0.0001; curFrame = i; } render(); drawCurve(); drawBgCurve(); }
   function nudgeFrame(i, nx, ny, reset){
     const f = frames[i]; if (!f) return;
