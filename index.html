@@ -348,6 +348,24 @@
           <a class="btn primary" id="dlLink" download="sprite-reel.mp4" style="width:100%;justify-content:center;margin-top:10px;text-decoration:none">⬇ Scarica il video</a>
         </div>
       </section>
+
+      <section class="panel ctrl">
+        <p class="eyebrow">Esporta spritesheet (.png)</p>
+        <p style="font-size:12px;color:var(--muted);margin:-4px 0 12px;line-height:1.5">Tutti i frame della sequenza (nell'ordine della griglia, con ricentratura e scala applicate) in un'unica immagine.</p>
+        <div class="field row2">
+          <div>
+            <label class="lbl" for="ssCols">Colonne</label>
+            <input type="number" id="ssCols" min="1" max="20" value="4" />
+          </div>
+          <div>
+            <label class="lbl" for="ssCell">Larghezza cella (px)</label>
+            <input type="number" id="ssCell" min="32" max="1080" value="256" />
+          </div>
+        </div>
+        <button class="btn" id="ssExport" style="width:100%;justify-content:center">Genera spritesheet</button>
+        <div class="exp-status" id="ssStatus"></div>
+        <a class="btn primary" id="ssLink" download="sequenza-spritesheet.png" style="display:none;width:100%;justify-content:center;margin-top:8px;text-decoration:none">⬇ Scarica spritesheet</a>
+      </section>
     </aside>
   </div>
 
@@ -388,6 +406,7 @@
   const rFrame = $("rFrame"), rFps = $("rFps"), rDur = $("rDur"), sheetCount = $("sheetCount");
   const progress = $("progress"), progressBar = $("progressBar"), expStatus = $("expStatus");
   const dlBox = $("dlBox"), resultVideo = $("resultVideo"), dlLink = $("dlLink");
+  const ssCols=$("ssCols"), ssCell=$("ssCell"), ssExport=$("ssExport"), ssStatus=$("ssStatus"), ssLink=$("ssLink");
 
   const getDefFps = () => parseInt(fpsEl.value, 10);
   const getSize = () => sizeEl.value.split("x").map(Number);
@@ -1197,6 +1216,54 @@
   }
   function resetExport(){ exportBtn.disabled = false; playBtn.disabled = false; }
   exportBtn.addEventListener("click", exportVideo);
+
+  // ---- export a .png spritesheet of the whole sequence ----
+  function composeFrameTo(g, i, x, y, w, h){
+    const f = frames[i]; if (!f) return;
+    const mode = fitEl.value;
+    const fit = mode === "cover" ? Math.max(w/refW, h/refH) : Math.min(w/refW, h/refH);
+    const scale = fit * (f.scale||1);            // per-frame scale, no time-zoom
+    const ox = (f.ox||0)*w, oy = (f.oy||0)*h;
+    g.save();
+    g.beginPath(); g.rect(x, y, w, h); g.clip();
+    if (!bgTransparent.checked || bgEv.length){ g.fillStyle = bgColor.value; g.fillRect(x, y, w, h); }
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+    if (f.proc){
+      if (f.proc.canvas.width > 1){
+        const dw = f.proc.canvas.width*scale, dh = f.proc.canvas.height*scale;
+        g.drawImage(f.proc.canvas, x+(w-dw)/2+ox, y+(h-dh)/2+oy, dw, dh);
+      }
+    } else {
+      const dw = f.sw*scale, dh = f.sh*scale;
+      g.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, x+(w-dw)/2+ox, y+(h-dh)/2+oy, dw, dh);
+    }
+    g.restore();
+  }
+  function exportSpritesheet(){
+    if (!frames.length){ ssStatus.textContent = "Nessun frame da esportare."; return; }
+    const cols = Math.max(1, Math.min(20, parseInt(ssCols.value,10)||4));
+    const cellW = Math.max(32, Math.min(1080, parseInt(ssCell.value,10)||256));
+    const [outW,outH] = getSize();
+    const cellH = Math.max(1, Math.round(cellW * outH/outW));
+    const n = frames.length, rows = Math.ceil(n/cols);
+    const sheet = document.createElement("canvas");
+    sheet.width = cols*cellW; sheet.height = rows*cellH;
+    const g = sheet.getContext("2d");
+    for (let i=0;i<n;i++){
+      composeFrameTo(g, i, (i%cols)*cellW, Math.floor(i/cols)*cellH, cellW, cellH);
+    }
+    ssStatus.textContent = "Generazione…";
+    sheet.toBlob((blob) => {
+      if (!blob){ ssStatus.textContent = "Errore nella generazione del PNG."; return; }
+      const url = URL.createObjectURL(blob);
+      ssLink.href = url;
+      ssLink.download = `spritesheet-${cols}x${rows}-${cellW}x${cellH}.png`;
+      ssLink.style.display = "";
+      const kb = blob.size/1024;
+      ssStatus.textContent = `${n} frame · griglia ${cols}×${rows} · ${sheet.width}×${sheet.height}px · ${kb>1024?(kb/1024).toFixed(1)+" MB":kb.toFixed(0)+" KB"}`;
+    }, "image/png");
+  }
+  ssExport.addEventListener("click", exportSpritesheet);
 
   setCanvasSize();
   renderZkList();
